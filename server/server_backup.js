@@ -506,7 +506,7 @@ app.get('/api/search', async (req, res) => {
       }
     }
 
-    // --- Logging ---
+    // --- Logging (as requested) ---
     const bunjangData = keywordListings.filter(l => l.platform === '번개장터');
     const carrotData = keywordListings.filter(l => l.platform === '당근마켓');
     console.log("검색어:", keyword);
@@ -518,6 +518,7 @@ app.get('/api/search', async (req, res) => {
     // --- If still 0 results: seed first, then fall back to recent items ---
     let finalListings = keywordListings;
     if (finalListings.length === 0) {
+      // Try to seed again and re-read
       generateLocalMockSeed(keyword, db);
       writeDb(db);
       const freshDb = readDb();
@@ -526,6 +527,7 @@ app.get('/api/search', async (req, res) => {
         finalListings = reseeded;
         console.log("재시딩 후 검색 결과 수:", finalListings.length);
       } else {
+        // Fallback: return most recently collected items from any keyword
         const recentItems = (freshDb.listings || [])
           .filter(l => l.marketPrice > 0)
           .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
@@ -557,6 +559,7 @@ app.get('/api/search', async (req, res) => {
 
       const volume = finalListings.length;
 
+      // Real calculated 7-day and 30-day averages
       const oneDayMs = 24 * 60 * 60 * 1000;
       const prices7Days = finalListings
         .filter(l => (now - new Date(l.createdAt)) <= 7 * oneDayMs)
@@ -574,8 +577,10 @@ app.get('/api/search', async (req, res) => {
         ? Math.round(prices30Days.reduce((a, b) => a + b, 0) / prices30Days.length)
         : avg;
 
+      // Calculate daily, weekly, monthly trends
       const { dailyTrend, weeklyTrend, monthlyTrend } = calculateTrends(finalListings, avg, now);
 
+      // Save trends back to db productHistory logs
       if (!db.productHistory) {
         db.productHistory = {};
       }
@@ -586,6 +591,7 @@ app.get('/api/search', async (req, res) => {
       };
       writeDb(db);
 
+      // Price Distribution Bins
       const priceDistribution = [];
       const binCount = 5;
       const range = max - min;
@@ -607,6 +613,7 @@ app.get('/api/search', async (req, res) => {
         });
       }
 
+      // Format lastUpdated string: YYYY-MM-DD HH:MM
       const yyyy = now.getFullYear();
       const mm = String(now.getMonth() + 1).padStart(2, '0');
       const dd = String(now.getDate()).padStart(2, '0');
@@ -633,6 +640,7 @@ app.get('/api/search', async (req, res) => {
       };
     }
 
+    // Convert listing creation timestamps into human readable timeAgo
     const now = new Date();
     const formattedItems = finalListings.map(item => {
       const elapsedMs = now - new Date(item.createdAt);
@@ -657,7 +665,149 @@ app.get('/api/search', async (req, res) => {
       };
     });
 
+    // Sort listings: Newest first
     formattedItems.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+
+    res.json({ items: formattedItems, stats });
+
+  } catch (error) {
+    console.error('Search API error, returning safe empty result:', error.message);
+    res.json({ items: [], stats: null });
+  }
+});
+
+
+    const prices = keywordListings.map(item => item.marketPrice).filter(p => typeof p === 'number' && !isNaN(p) && p > 0);
+    let stats = null;
+
+    if (prices.length > 0) {
+      const now = new Date();
+      const sum = prices.reduce((a, b) => a + b, 0);
+      const avg = Math.round(sum / prices.length);
+      const max = Math.max(...prices);
+      const min = Math.min(...prices);
+      
+      const bunjangAvg = Math.round(
+        keywordListings.filter(i => i.platform === '번개장터' && typeof i.marketPrice === 'number' && !isNaN(i.marketPrice) && i.marketPrice > 0).reduce((a, b) => a + b.marketPrice, 0) / 
+        (keywordListings.filter(i => i.platform === '번개장터' && typeof i.marketPrice === 'number' && !isNaN(i.marketPrice) && i.marketPrice > 0).length || 1)
+      ) || avg;
+      
+      const daangnAvg = Math.round(
+        keywordListings.filter(i => i.platform === '당근마켓' && typeof i.marketPrice === 'number' && !isNaN(i.marketPrice) && i.marketPrice > 0).reduce((a, b) => a + b.marketPrice, 0) / 
+        (keywordListings.filter(i => i.platform === '당근마켓' && typeof i.marketPrice === 'number' && !isNaN(i.marketPrice) && i.marketPrice > 0).length || 1)
+      ) || avg;
+
+      const volume = keywordListings.length;
+
+      // Real calculated 7-day and 30-day averages
+      const oneDayMs = 24 * 60 * 60 * 1000;
+      const prices7Days = keywordListings
+        .filter(l => (now - new Date(l.createdAt)) <= 7 * oneDayMs)
+        .map(l => l.marketPrice)
+        .filter(p => typeof p === 'number' && !isNaN(p) && p > 0);
+      const avg7Days = prices7Days.length > 0 
+        ? Math.round(prices7Days.reduce((a, b) => a + b, 0) / prices7Days.length)
+        : avg;
+
+      const prices30Days = keywordListings
+        .filter(l => (now - new Date(l.createdAt)) <= 30 * oneDayMs)
+        .map(l => l.marketPrice)
+        .filter(p => typeof p === 'number' && !isNaN(p) && p > 0);
+      const avg30Days = prices30Days.length > 0 
+        ? Math.round(prices30Days.reduce((a, b) => a + b, 0) / prices30Days.length)
+        : avg;
+
+      // Calculate daily, weekly, monthly trends
+      const { dailyTrend, weeklyTrend, monthlyTrend } = calculateTrends(keywordListings, avg, now);
+
+      // Save trends back to db productHistory logs
+      if (!db.productHistory) {
+        db.productHistory = {};
+      }
+      db.productHistory[queryKey] = {
+        daily: dailyTrend,
+        weekly: weeklyTrend,
+        monthly: monthlyTrend
+      };
+      writeDb(db);
+
+      // Price Distribution Bins
+      const priceDistribution = [];
+      const binCount = 5;
+      const range = max - min;
+      const binWidth = range > 0 ? range / binCount : 10000;
+      
+      for (let i = 0; i < binCount; i++) {
+        const binStart = min + (i * binWidth);
+        const binEnd = min + ((i + 1) * binWidth);
+        const count = prices.filter(p => p >= binStart && p <= binEnd).length;
+        
+        const formatPriceLabel = (val) => {
+          if (val >= 10000) return `${Math.round(val / 10000)}만`;
+          return `${val}원`;
+        };
+
+        priceDistribution.push({
+          range: `${formatPriceLabel(binStart)} - ${formatPriceLabel(binEnd)}`,
+          count: count || 0
+        });
+      }
+
+      // Format lastUpdated string: YYYY-MM-DD HH:MM
+      const yyyy = now.getFullYear();
+      const mm = String(now.getMonth() + 1).padStart(2, '0');
+      const dd = String(now.getDate()).padStart(2, '0');
+      const hh = String(now.getHours()).padStart(2, '0');
+      const minStr = String(now.getMinutes()).padStart(2, '0');
+      const lastUpdated = `${yyyy}-${mm}-${dd} ${hh}:${minStr}`;
+
+      stats = {
+        avgPrice: avg,
+        avg7Days,
+        avg30Days,
+        maxPrice: max,
+        minPrice: min,
+        volume,
+        bunjangAvg,
+        daangnAvg,
+        priceDistribution,
+        trend: dailyTrend,
+        volumeTrend: dailyTrend,
+        dailyTrend,
+        weeklyTrend,
+        monthlyTrend,
+        lastUpdated
+      };
+    }
+
+    // Convert listing creation timestamps into human readable timeAgo
+    const now = new Date();
+    const formattedItems = keywordListings.map(item => {
+      const elapsedMs = now - new Date(item.createdAt);
+      const elapsedMins = Math.floor(elapsedMs / 60000);
+      let timeAgo = '방금 전';
+      
+      if (elapsedMins >= 1 && elapsedMins < 60) {
+        timeAgo = `${elapsedMins}분 전`;
+      } else if (elapsedMins >= 60) {
+        const elapsedHours = Math.floor(elapsedMins / 60);
+        if (elapsedHours < 24) {
+          timeAgo = `${elapsedHours}시간 전`;
+        } else {
+          const elapsedDays = Math.floor(elapsedHours / 24);
+          timeAgo = `${elapsedDays}일 전`;
+        }
+      }
+
+      return {
+        ...item,
+        timeAgo
+      };
+    });
+
+    // Sort listings: Newest first
+    formattedItems.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+
     res.json({ items: formattedItems, stats });
 
   } catch (error) {
@@ -689,6 +839,8 @@ app.post('/api/analyze', async (req, res) => {
 
   try {
     const queryKey = sanitizedName.toLowerCase().trim();
+    
+    // Seed database if it contains no listings for this keyword
     await scrapeAndAccumulate(sanitizedName);
 
     const db = readDb();
@@ -714,6 +866,7 @@ app.post('/api/analyze', async (req, res) => {
     
     const avgPrice = allValidPrices.reduce((a, b) => a + b, 0) / allValidPrices.length;
     
+    // 하자 분석 (키워드 기반 차등 감가율)
     let depreciationRate = 0;
     if (hasDefect) {
       const defectText = defectDetail.toLowerCase();
@@ -730,8 +883,12 @@ app.post('/api/analyze', async (req, res) => {
     
     const appropriatePrice = avgPrice * (1 - depreciationRate);
     
-    const bunjangRef = validBunjangPrices.length > 0 ? validBunjangPrices.reduce((a,b)=>a+b,0) / validBunjangPrices.length : 0;
-    const daangnRef = validDaangnPrices.length > 0 ? validDaangnPrices.reduce((a,b)=>a+b,0) / validDaangnPrices.length : 0;
+    const bunjangRef = validBunjangPrices.length > 0 
+      ? validBunjangPrices.reduce((a,b)=>a+b,0) / validBunjangPrices.length 
+      : 0;
+    const daangnRef = validDaangnPrices.length > 0 
+      ? validDaangnPrices.reduce((a,b)=>a+b,0) / validDaangnPrices.length 
+      : 0;
     
     const similarDefectItems = keywordListings
       .filter(i => i.hasDefect && i.marketPrice > 0 && i.marketPrice < avgPrice * 1.5)
