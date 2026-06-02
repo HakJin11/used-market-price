@@ -85,7 +85,7 @@ function App() {
     setPage(1);
     setHasMore(true);
     fetchData(1, true, debouncedQuery);
-  }, [debouncedQuery]);
+  }, [debouncedQuery ,activeCategory ]);
 
   // 페이지 변경 시 (무한 스크롤)
   useEffect(() => {
@@ -130,7 +130,7 @@ function App() {
       }
 
       const keyword = (query || '').trim();
-      if (!keyword) {
+      if (!keyword && activeCategory === '전체') {
         if (thisSearchId !== currentSearchIdRef.current) return;
         setItems([]);
         setStats(null);
@@ -139,7 +139,7 @@ function App() {
         setIsLoadingMore(false);
         return;
       }
-      const res = await axios.get(`/api/search?q=${encodeURIComponent(keyword)}&page=${pageNum}`, {
+      const res = await axios.get(`/api/search?q=${encodeURIComponent(keyword)}&page=${pageNum}&category=${encodeURIComponent(activeCategory)}`, {
         signal: controller.signal
       });
       
@@ -177,6 +177,12 @@ function App() {
         const safeQuery = (query || '').trim();
         const filteredMock = mockData.filter(item => {
           if (!item || !item.name) return false;
+          const matchesQuery = item.name.toLowerCase().includes(safeQuery.toLowerCase()) || item.id.includes(safeQuery);
+          
+          // 카테고리 매칭 여부 ('전체'면 패스, 아니면 카테고리 글자가 같아야 함)
+          const matchesCategory = activeCategory === '전체' || item.category === activeCategory;
+          
+          return matchesQuery && matchesCategory;
           return item.name.toLowerCase().includes(safeQuery.toLowerCase()) || 
                  item.id.includes(safeQuery);
         });
