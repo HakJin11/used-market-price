@@ -2,6 +2,10 @@ import { useState, useEffect, useRef } from 'react';
 import { X, Loader2, Info, AlertTriangle, ExternalLink, Activity, TrendingUp, BarChart3, HelpCircle, FileText, ArrowUpRight, ArrowDownRight, Sparkles } from 'lucide-react';
 import axios from 'axios';
 
+
+const API_URL = 'https://used-market-price.onrender.com';
+
+
 export default function RegisterModal({ onClose }) {
   const [formData, setFormData] = useState({ name: '', price: '', defectDetail: '' });
   const [loading, setLoading] = useState(false);
@@ -54,12 +58,12 @@ export default function RegisterModal({ onClose }) {
     try {
       // Parallel requests for valuation analysis and raw marketplace scraping
       const [analyzeRes, searchRes] = await Promise.all([
-        axios.post('/api/analyze', {
+        axios.post(`${API_URL}/api/analyze`, {
           name: sanitizedName,
           price: sanitizedPrice,
           defectDetail: formData.defectDetail.trim()
         }, { signal: controller.signal }),
-        axios.get(`/api/search?q=${encodeURIComponent(sanitizedName)}`, { signal: controller.signal })
+        axios.get(`${API_URL}/api/search?q=${encodeURIComponent(sanitizedName)}`, { signal: controller.signal })
       ]);
 
 
