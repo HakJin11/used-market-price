@@ -452,7 +452,7 @@ async function scrapeAndAccumulate(keyword) {
 
   if (combinedScraped.length === 0 && isFirstSearch) {
     console.log(`No active listings scraped and no DB cache found for [${keyword}]. Seeding local simulated dataset...`);
-    generateLocalMockSeed(keyword, db);
+    // generateLocalMockSeed(keyword, db);
   }
 
   writeDb(db);
