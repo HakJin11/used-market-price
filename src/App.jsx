@@ -132,6 +132,12 @@ function App() {
       const keyword = (query || '').trim();
       if (!keyword && activeCategory === '전체') {
         if (thisSearchId !== currentSearchIdRef.current) return;
+
+        const defaultItems = mockData.filter(item => {
+          if (!item) return false;
+          return activeCategory === '전체' || item.category === activeCategory;
+        });
+        
         setItems([]);
         setStats(null);
         setHasMore(false);
