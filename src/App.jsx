@@ -92,7 +92,7 @@ function App() {
     if (page > 1) {
       fetchData(page, false, debouncedQuery);
     }
-  }, [page]);
+  }, [page , activeCategory]);
 
   const fetchData = async (pageNum, isInitial, query) => {
     currentSearchIdRef.current += 1;
