@@ -62,6 +62,11 @@ export default function RegisterModal({ onClose }) {
         axios.get(`/api/search?q=${encodeURIComponent(sanitizedName)}`, { signal: controller.signal })
       ]);
 
+
+      console.log('analyzeRes', analyzeRes.data);
+      console.log('searchRes', searchRes.data);
+
+
       setResult({
         ...analyzeRes.data,
         items: searchRes.data.items || [],
