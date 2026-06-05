@@ -388,8 +388,7 @@ async function scrapeAndAccumulate(keyword) {
 
   const now = new Date();
   combinedScraped.forEach(item => {
-    const exists = db.listings.some(l => l.id === item.id);
-    if (!exists) {
+
       const isDefect = Math.random() > 0.8;
       const marketPrice = item.price;
       const riskLevel = marketPrice === 0 ? '위험' : (isDefect ? '주의' : '안전');
@@ -398,7 +397,7 @@ async function scrapeAndAccumulate(keyword) {
       const platform = item.source === 'bunjang' ? '번개장터' : '당근마켓';
 
       const enrichedItem = {
-        id: item.id,
+        id: `${item.id}_${Date.now()}_${Math.floor(Math.random() * 10000)}`,
         name: item.name,
         category: category,
         image: item.image,
@@ -447,8 +446,7 @@ async function scrapeAndAccumulate(keyword) {
           });
         });
       }
-    }
-  });
+    });
 
   if (combinedScraped.length === 0 && isFirstSearch) {
     console.log(`No active listings scraped and no DB cache found for [${keyword}]. Seeding local simulated dataset...`);
