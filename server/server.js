@@ -32,7 +32,7 @@ function readDb() {
     return JSON.parse(data);
   } catch (error) {
     console.error('DB read error, returning empty list:', error);
-    return { listings: [] };
+    return { listings: [], categories: [] };
   }
 }
 
@@ -357,6 +357,15 @@ async function scrapeAndAccumulate(keyword) {
   if (!queryKey) return;
 
   const db = readDb();
+
+  if (!db.categories) {
+  db.categories = [];
+}
+
+if (!db.categories.includes(queryKey)) {
+  db.categories.push(queryKey);
+}
+
   const isFirstSearch = db.listings.filter(l => l.keyword === queryKey).length === 0;
 
   // Safe wrapper for scrapers
@@ -758,6 +767,33 @@ app.post('/api/analyze', async (req, res) => {
       similarDefectItems: [],
       isEmpty: true
     });
+  }
+});
+
+
+// 밑에 넣었던 /api/listings를 이걸로 덮어쓰기 하세요!
+app.get('/api/listings', (req, res) => {
+  try {
+    const db = readDb();
+    let allProducts = db.listings || [];
+
+    // 1. 과거 시세 그래프용 데이터(_hist_)는 제외하고 진짜 매물만 필터링
+    let cleanListings = allProducts.filter(item => item.id && !item.id.includes('_hist_'));
+
+    // 2. ⭐ [핵심] 프론트엔드에서 카테고리를 쿼리스트링으로 보냈다면 필터링 해줌!
+    // 예: /api/listings?category=의류 -> 의류만 필터링됨
+    const targetCategory = req.query.category; 
+    if (targetCategory && targetCategory !== '전체') {
+      cleanListings = cleanListings.filter(item => item.category === targetCategory);
+    }
+
+    // 최신순 정렬
+    cleanListings.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+
+    res.json(cleanListings);
+  } catch (error) {
+    console.error('전체 목록 조회 오류:', error.message);
+    res.json([]);
   }
 });
 
