@@ -137,7 +137,7 @@ function App() {
           if (!item) return false;
           return activeCategory === '전체' || item.category === activeCategory;
         });
-        
+
         setItems([]);
         setStats(null);
         setHasMore(false);
@@ -312,7 +312,7 @@ function App() {
         </div>
 
         <SearchBar searchQuery={searchQuery} setSearchQuery={setSearchQuery} />
-        <Filter activeCategory={activeCategory} setActiveCategory={setActiveCategory} />
+         <Filter activeCategory={activeCategory} setActiveCategory={setActiveCategory}  />
 
         {/* Dynamic Statistical Analysis Report Dashboard placed ABOVE list - Conditional on searchQuery being truthy */}
         {!isLoading && stats && debouncedQuery && <StatsDashboard stats={stats} searchQuery={debouncedQuery} items={filteredItems} />}
