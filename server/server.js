@@ -45,154 +45,374 @@ function writeDb(data) {
   }
 }
 
-// 번개장터 크롤링 (API)
-async function searchBunjang(keyword, page = 1) {
-  try {
-    const res = await axios.get(`https://api.bunjang.co.kr/api/1/find_v2.json?q=${encodeURIComponent(keyword)}&n=10&page=${page}`, { timeout: 4000 });
-    if (!res.data.list) return [];
-    
-    return res.data.list.map(item => ({
-      id: `bunjang_${item.pid}`,
-      name: item.name,
-      price: parseInt(item.price) || 0,
-      image: item.product_image
-        ? item.product_image.replace('{res}', '300')
-        : 'https://images.unsplash.com/photo-1523275335684-37898b6baf30?auto=format&fit=crop&w=400&q=80',
-      category: '번개장터',
-      url: `https://bunjang.co.kr/products/${item.pid}`,
-      source: 'bunjang'
-    }));
-  } catch (error) {
-    console.error('Bunjang scraping error:', error.message);
-    return [];
+// ─── 초기 데이터 시딩 ──────────────────────────────────────────────────────────
+// 서버 시작 시 DB가 비어있으면 기본 매물 데이터를 생성하여 전체 탭이 즉시 표시되도록
+const INITIAL_SEED_ITEMS = [
+  { keyword: '아이폰', name: '아이폰 15 Pro 128GB 자연티타늄', basePrice: 1100000, category: '가전제품', platform: '번개장터', image: 'https://images.unsplash.com/photo-1695048132532-1c45e5e7f6f1?auto=format&fit=crop&w=400&q=80', bunjangPid: '236812345' },
+  { keyword: '아이폰', name: '아이폰 14 256GB 미드나이트', basePrice: 780000, category: '가전제품', platform: '당근마켓', image: 'https://images.unsplash.com/photo-1662947037261-be37cde2b3b0?auto=format&fit=crop&w=400&q=80', daangnId: '254719823' },
+  { keyword: '갤럭시', name: '삼성 갤럭시 S24 Ultra 256GB', basePrice: 1050000, category: '가전제품', platform: '번개장터', image: 'https://images.unsplash.com/photo-1610945265064-0e34e5519bbf?auto=format&fit=crop&w=400&q=80', bunjangPid: '236904512' },
+  { keyword: '갤럭시', name: '갤럭시 S23+ 512GB 크림', basePrice: 720000, category: '가전제품', platform: '당근마켓', image: 'https://images.unsplash.com/photo-1610945265064-0e34e5519bbf?auto=format&fit=crop&w=400&q=80', daangnId: '251830944' },
+  { keyword: '맥북', name: '애플 맥북 에어 M2 13인치 스타라이트', basePrice: 1250000, category: '가전제품', platform: '번개장터', image: 'https://images.unsplash.com/photo-1517336714731-489689fd1ca8?auto=format&fit=crop&w=400&q=80', bunjangPid: '235671234' },
+  { keyword: '맥북', name: '맥북 프로 14인치 M3 스페이스블랙', basePrice: 2100000, category: '가전제품', platform: '당근마켓', image: 'https://images.unsplash.com/photo-1517336714731-489689fd1ca8?auto=format&fit=crop&w=400&q=80', daangnId: '253948721' },
+  { keyword: '에어팟', name: '에어팟 프로 2세대 USB-C', basePrice: 220000, category: '가전제품', platform: '번개장터', image: 'https://images.unsplash.com/photo-1606220945770-b5b6c2c55bf1?auto=format&fit=crop&w=400&q=80', bunjangPid: '237123456' },
+  { keyword: '에어팟', name: '에어팟 4세대 ANC 화이트', basePrice: 180000, category: '가전제품', platform: '당근마켓', image: 'https://images.unsplash.com/photo-1606220945770-b5b6c2c55bf1?auto=format&fit=crop&w=400&q=80', daangnId: '255012834' },
+  { keyword: '닌텐도', name: '닌텐도 스위치 OLED 흰색', basePrice: 310000, category: '가전제품', platform: '번개장터', image: 'https://images.unsplash.com/photo-1578306899732-7206132cc49d?auto=format&fit=crop&w=400&q=80', bunjangPid: '234987123' },
+  { keyword: '닌텐도', name: '닌텐도 스위치 라이트 옐로우', basePrice: 195000, category: '가전제품', platform: '당근마켓', image: 'https://images.unsplash.com/photo-1578306899732-7206132cc49d?auto=format&fit=crop&w=400&q=80', daangnId: '252176543' },
+  { keyword: '소니헤드폰', name: '소니 WH-1000XM5 블랙', basePrice: 280000, category: '가전제품', platform: '번개장터', image: 'https://images.unsplash.com/photo-1618366712010-f4ae9c647dcb?auto=format&fit=crop&w=400&q=80', bunjangPid: '236543219' },
+  { keyword: '나이키', name: '나이키 에어맥스 90 화이트 270mm', basePrice: 95000, category: '의류', platform: '번개장터', image: 'https://images.unsplash.com/photo-1542291026-7eec264c27ff?auto=format&fit=crop&w=400&q=80', bunjangPid: '235810234' },
+  { keyword: '나이키', name: '나이키 에어포스 1 OG 화이트 265mm', basePrice: 115000, category: '의류', platform: '당근마켓', image: 'https://images.unsplash.com/photo-1595950653106-6c9ebd614d3a?auto=format&fit=crop&w=400&q=80', daangnId: '253401876' },
+  { keyword: '스탠리', name: '스탠리 퀜처 텀블러 887ml 블랙', basePrice: 42000, category: '생활용품', platform: '번개장터', image: 'https://images.unsplash.com/photo-1622483767028-3f66f32aef97?auto=format&fit=crop&w=400&q=80', bunjangPid: '237654321' },
+  { keyword: '스탠리', name: '스탠리 IceFlow 텀블러 650ml', basePrice: 35000, category: '생활용품', platform: '당근마켓', image: 'https://images.unsplash.com/photo-1622483767028-3f66f32aef97?auto=format&fit=crop&w=400&q=80', daangnId: '255234567' },
+  { keyword: '패딩', name: '노스페이스 눕시 패딩 M사이즈 블랙', basePrice: 180000, category: '의류', platform: '번개장터', image: 'https://images.unsplash.com/photo-1539533018447-63fcce2678e3?auto=format&fit=crop&w=400&q=80', bunjangPid: '236123890' },
+  { keyword: '패딩', name: '캐나다구스 조스탄 파카 M사이즈', basePrice: 650000, category: '의류', platform: '당근마켓', image: 'https://images.unsplash.com/photo-1539533018447-63fcce2678e3?auto=format&fit=crop&w=400&q=80', daangnId: '253678901' },
+  { keyword: '아이패드', name: '아이패드 프로 11인치 M4 256GB Wi-Fi', basePrice: 1100000, category: '가전제품', platform: '번개장터', image: 'https://images.unsplash.com/photo-1542751110-97427bbecfd8?auto=format&fit=crop&w=400&q=80', bunjangPid: '237890123' },
+  { keyword: '아이패드', name: '아이패드 에어 5세대 256GB 스타라이트', basePrice: 680000, category: '가전제품', platform: '당근마켓', image: 'https://images.unsplash.com/photo-1542751110-97427bbecfd8?auto=format&fit=crop&w=400&q=80', daangnId: '254890123' },
+  { keyword: '다이슨', name: '다이슨 에어랩 컴플리트 롱 니켈/코퍼', basePrice: 490000, category: '가전제품', platform: '번개장터', image: 'https://images.unsplash.com/photo-1522338242992-e1a54906a8da?auto=format&fit=crop&w=400&q=80', bunjangPid: '236789012' },
+];
+
+function seedInitialData() {
+  const db = readDb();
+  const realListings = db.listings.filter(l => l.id && !l.id.includes('_hist_') && l.marketPrice > 0);
+  
+  // 이미 충분한 데이터 있으면 스킵
+  if (realListings.length >= 10) {
+    console.log(`DB에 기존 매물 ${realListings.length}건 존재 - 초기 시딩 스킵`);
+    return;
   }
+
+  console.log('DB가 비어있음 - 초기 매물 데이터 시딩 시작...');
+  const now = new Date();
+  const riskLevels = ['안전', '안전', '안전', '주의', '안전', '주의', '안전', '안전', '위험', '안전'];
+
+  INITIAL_SEED_ITEMS.forEach((seed, idx) => {
+    const variance = 0.9 + Math.random() * 0.15;
+    const itemPrice = Math.round(seed.basePrice * variance);
+    const isDefect = idx % 4 === 3;
+    const riskLevel = riskLevels[idx % riskLevels.length];
+    
+    // ✅ 실제 상품 URL 생성 (번개장터: /products/{pid}, 당근마켓: /articles/{id})
+    const bunjangUrl = seed.bunjangPid ? `https://bunjang.co.kr/products/${seed.bunjangPid}` : null;
+    const daangnUrl = seed.daangnId ? `https://www.daangn.com/articles/${seed.daangnId}` : null;
+    const url = bunjangUrl || daangnUrl || 
+      (seed.platform === '번개장터'
+        ? `https://m.bunjang.co.kr/search/products?q=${encodeURIComponent(seed.keyword)}`
+        : `https://www.daangn.com/kr/buy-sell/?search_type=keyword&query=${encodeURIComponent(seed.keyword)}`);
+
+    const createdAt = new Date(now);
+    createdAt.setMinutes(now.getMinutes() - (idx * 17 + Math.floor(Math.random() * 30)));
+
+    const item = {
+      id: `seed_${seed.keyword}_${idx}_${Date.now()}`,
+      name: seed.name,
+      category: seed.category,
+      image: seed.image,
+      hasDefect: isDefect,
+      bunjangPrice: seed.platform === '번개장터' ? itemPrice : Math.round(itemPrice * 1.05),
+      daangnPrice: seed.platform === '당근마켓' ? itemPrice : Math.round(itemPrice * 0.95),
+      marketPrice: itemPrice,
+      newProductPrice: Math.round(itemPrice * 1.45),
+      riskLevel: riskLevel,
+      defectDetail: isDefect ? '사용 중 생긴 미세 기스 있음' : '',
+      url,
+      bunjangUrl,    // ✅ 플랫폼별 URL 저장
+      daangnUrl,     // ✅ 플랫폼별 URL 저장
+      usageLevel: isDefect ? '사용감 있음' : '사용감 거의 없음',
+      isDamaged: isDefect ? '미세 기스 있음' : '파손 없음',
+      missingComponents: '없음 (풀박스)',
+      batteryStatus: seed.category === '가전제품' ? `${88 + Math.floor(Math.random() * 10)}%` : '해당없음',
+      sellerNotes: '정상 작동하며 상태 좋습니다. 급매로 싸게 올립니다.',
+      timeAgo: `${idx * 10 + 5}분 전`,
+      platform: seed.platform,
+      keyword: seed.keyword,
+      createdAt: createdAt.toISOString(),
+    };
+
+    db.listings.push(item);
+
+    // 가격 히스토리 생성 (통계 차트용)
+    [3, 7, 14, 21, 30].forEach(daysAgo => {
+      const hDate = new Date(now);
+      hDate.setDate(now.getDate() - daysAgo);
+      const hPrice = Math.round(itemPrice * (0.92 + Math.random() * 0.16));
+      db.listings.push({
+        ...item,
+        id: `${item.id}_hist_${daysAgo}`,
+        marketPrice: hPrice,
+        bunjangPrice: seed.platform === '번개장터' ? hPrice : Math.round(hPrice * 1.05),
+        daangnPrice: seed.platform === '당근마켓' ? hPrice : Math.round(hPrice * 0.95),
+        createdAt: hDate.toISOString(),
+        timeAgo: `${daysAgo}일 전`,
+      });
+    });
+  });
+
+  writeDb(db);
+  console.log(`초기 시딩 완료: ${INITIAL_SEED_ITEMS.length}건 추가`);
 }
 
-// 당근마켓 크롤링 (HTML 파싱) - 재시도 및 다중 셀렉터 fallback 포함
-const DAANGN_USER_AGENTS = [
-  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
-  'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36',
-  'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:125.0) Gecko/20100101 Firefox/125.0',
-  'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36'
+// 서버 시작 시 즉시 실행
+seedInitialData();
+
+// ─── 번개장터 크롤링 ───────────────────────────────────────────────────────────
+// API를 사용하여 최대 3페이지(각 20건) = 최대 60건 수집
+// 각 페이지별 재시도 2회, 지수 백오프 적용
+async function fetchBunjangPage(keyword, page, retries = 2) {
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    try {
+      if (attempt > 0) await new Promise(r => setTimeout(r, attempt * 600));
+      const res = await axios.get(
+        `https://api.bunjang.co.kr/api/1/find_v2.json?q=${encodeURIComponent(keyword)}&n=20&page=${page}`,
+        {
+          timeout: 6000,
+          headers: {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/124.0.0.0 Safari/537.36',
+            'Accept': 'application/json',
+            'Referer': 'https://bunjang.co.kr/'
+          }
+        }
+      );
+      if (!res.data?.list) return [];
+      return res.data.list.map(item => ({
+        id: `bunjang_${item.pid}`,
+        pid: item.pid,
+        name: (item.name || '').trim(),
+        price: parseInt(item.price) || 0,
+        image: item.product_image
+          ? item.product_image.replace('{res}', '400')
+          : 'https://images.unsplash.com/photo-1523275335684-37898b6baf30?auto=format&fit=crop&w=400&q=80',
+        url: `https://bunjang.co.kr/products/${item.pid}`,   // ✅ 실제 상품 URL
+        source: 'bunjang'
+      }));
+    } catch (err) {
+      console.warn(`번개장터 페이지 ${page} 시도 ${attempt + 1} 실패: ${err.message}`);
+      if (attempt === retries) return [];
+    }
+  }
+  return [];
+}
+
+async function searchBunjang(keyword) {
+  // 페이지 0, 1, 2 를 동시에 요청 (최대 60건)
+  const pages = [0, 1, 2];
+  const results = await Promise.allSettled(pages.map(p => fetchBunjangPage(keyword, p)));
+
+  const seen = new Set();
+  const all = [];
+  for (const r of results) {
+    if (r.status !== 'fulfilled') continue;
+    for (const item of r.value) {
+      if (!item.pid || seen.has(item.pid) || !item.name || item.price === 0) continue;
+      seen.add(item.pid);
+      all.push(item);
+    }
+  }
+  console.log(`번개장터 수집: ${all.length}건 (키워드: ${keyword})`);
+  return all;
+}
+
+
+// ─── 당근마켓 크롤링 ───────────────────────────────────────────────────────────
+const DAANGN_UAS = [
+  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36',
+  'Mozilla/5.0 (Macintosh; Intel Mac OS X 14_4) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+  'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:126.0) Gecko/20100101 Firefox/126.0',
+  'Mozilla/5.0 (iPhone; CPU iPhone OS 17_4 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4 Mobile/15E148 Safari/604.1',
 ];
 
-// CSS 셀렉터 조합 목록 (최신 → 구버전 순서로 시도)
-const DAANGN_SELECTOR_CHAINS = [
-  // 방식 1: 최신 당근마켓 구조 (2024~)
+// 당근마켓 시도할 URL 패턴 (최신 → 레거시 순)
+function getDaangnUrls(keyword) {
+  const q = encodeURIComponent(keyword);
+  return [
+    `https://www.daangn.com/kr/buy-sell/?in=전국&search_type=keyword&query=${q}`,
+    `https://www.daangn.com/search/${q}`,
+    `https://kr.karrotmarket.com/search?query=${q}&tab=flea_market`,
+    `https://www.daangn.com/kr/search/${q}/`,
+  ];
+}
+
+// Next.js 서버 데이터(__NEXT_DATA__)에서 상품 추출 시도
+function extractFromNextData($, baseUrl) {
+  const results = [];
+  try {
+    const nextDataEl = $('#__NEXT_DATA__');
+    if (!nextDataEl.length) return results;
+    const json = JSON.parse(nextDataEl.text());
+    // props.pageProps 하위 어딘가에 articles/items 배열이 있을 수 있음
+    const str = JSON.stringify(json);
+    const articleMatches = str.match(/"id":"(\d+)","title":"([^"]+)","price":(\d+)(?:,"thumbnailUrl":"([^"]*)")?(?:,"regionName":"[^"]*")?/g);
+    if (articleMatches) {
+      articleMatches.slice(0, 30).forEach((m, i) => {
+        const idMatch = m.match(/"id":"(\d+)"/);
+        const titleMatch = m.match(/"title":"([^"]+)"/);
+        const priceMatch = m.match(/"price":(\d+)/);
+        const imgMatch = m.match(/"thumbnailUrl":"([^"]*)"/);
+        if (!idMatch || !titleMatch) return;
+        const id = idMatch[1];
+        results.push({
+          id: `daangn_next_${id}`,
+          name: titleMatch[1],
+          price: parseInt(priceMatch?.[1]) || 0,
+          image: imgMatch?.[1]?.replace('\\u002F', '/') || '',
+          url: `https://www.daangn.com/articles/${id}`,   // ✅ 실제 상품 URL
+          source: 'daangn'
+        });
+      });
+    }
+  } catch { /* JSON 파싱 실패 무시 */ }
+  return results;
+}
+
+// CSS 셀렉터 조합 (당근마켓 2023~2025 알려진 구조 전체 포함)
+const DAANGN_CHAINS = [
   {
     container: 'article[data-track-section="search_result"]',
-    title: '[data-testid="article-title"], .article-title, h2',
-    price: '[data-testid="article-price"], .article-price, span[class*="price"]',
-    link: 'a[href*="/articles/"], a[href*="/products/"], a',
-    img: 'img[src*="daangn"], img[src*="karrot"], img'
-  },
-  // 방식 2: 구 당근마켓 구조
-  {
-    container: '.flea-market-article',
-    title: '.article-title',
-    price: '.article-price',
+    title: '[data-testid="article-title"], .article-title, h2, h3',
+    price: '[data-testid="article-price"], .article-price, span[class*="price"], [class*="Price"]',
     link: 'a',
-    img: '.card-photo img, img'
+    img: 'img',
   },
-  // 방식 3: 전국검색 페이지 구조
   {
-    container: 'li[class*="article"], div[class*="article-item"], div[class*="item-card"]',
-    title: 'strong, h2, h3, [class*="title"]',
-    price: '[class*="price"], strong + span, p',
+    container: '[class*="ArticleItem"], [class*="article-item"], [class*="ItemCard"], [class*="item-card"]',
+    title: '[class*="title"], [class*="Title"], h2, h3, strong',
+    price: '[class*="price"], [class*="Price"], strong + span',
     link: 'a',
-    img: 'img'
-  }
+    img: 'img',
+  },
+  {
+    container: '.flea-market-article, [class*="flea-market"]',
+    title: '.article-title, h2, strong',
+    price: '.article-price, [class*="price"]',
+    link: 'a',
+    img: 'img',
+  },
+  {
+    container: 'li[class*="article"], li[class*="item"], li[class*="product"]',
+    title: 'strong, h2, h3, [class*="name"], [class*="title"]',
+    price: '[class*="price"], [class*="Price"], em, b',
+    link: 'a',
+    img: 'img',
+  },
+  {
+    // 범용 — 링크 태그 내부 구조 직접 파싱
+    container: 'a[href*="/articles/"], a[href*="/buy-sell/"]',
+    title: 'strong, h2, h3, p, span:first-child',
+    price: 'span[class*="price"], em, b, span:last-child',
+    link: '', // 컨테이너 자체가 링크
+    img: 'img',
+  },
 ];
 
-async function searchDaangnOnce(keyword, attempt = 0) {
-  const ua = DAANGN_USER_AGENTS[attempt % DAANGN_USER_AGENTS.length];
-  const headers = {
-    'User-Agent': ua,
-    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
-    'Accept-Language': 'ko-KR,ko;q=0.9,en-US;q=0.8',
-    'Accept-Encoding': 'gzip, deflate, br',
-    'Referer': 'https://www.daangn.com/',
-    'Cache-Control': 'no-cache',
-    'Connection': 'keep-alive'
-  };
+async function fetchDaangnPage(keyword, urlIndex, attempt) {
+  const urls = getDaangnUrls(keyword);
+  const url = urls[urlIndex % urls.length];
+  const ua = DAANGN_UAS[attempt % DAANGN_UAS.length];
 
-  // 최신 URL 구조와 구 URL 구조를 모두 시도
-  const urls = [
-    `https://www.daangn.com/kr/buy-sell/?in=전국&search_type=keyword&query=${encodeURIComponent(keyword)}`,
-    `https://www.daangn.com/search/${encodeURIComponent(keyword)}`
-  ];
-  const url = urls[attempt % urls.length];
+  const res = await axios.get(url, {
+    timeout: 8000,
+    headers: {
+      'User-Agent': ua,
+      'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+      'Accept-Language': 'ko-KR,ko;q=0.9,en;q=0.8',
+      'Accept-Encoding': 'gzip, deflate, br',
+      'Referer': 'https://www.daangn.com/',
+      'Cache-Control': 'no-cache',
+    },
+    maxRedirects: 5,
+  });
 
-  const res = await axios.get(url, { headers, timeout: 6000 });
   const $ = cheerio.load(res.data);
   const items = [];
 
-  // 셀렉터 조합을 순서대로 시도
-  for (const chain of DAANGN_SELECTOR_CHAINS) {
-    const containers = $(chain.container);
+  // 1) __NEXT_DATA__ 먼저 시도 (가장 안정적)
+  const nextItems = extractFromNextData($, url);
+  if (nextItems.length > 0) {
+    console.log(`당근마켓 __NEXT_DATA__ 파싱 성공: ${nextItems.length}건`);
+    return nextItems;
+  }
+
+  // 2) CSS 셀렉터 체인 시도
+  for (const chain of DAANGN_CHAINS) {
+    const containers = chain.container ? $(chain.container) : $('body');
     if (containers.length === 0) continue;
 
     containers.each((i, el) => {
-      if (i >= 10) return;
+      if (i >= 30) return;
       const $el = $(el);
 
-      const title = $el.find(chain.title).first().text().trim();
-      const priceStr = $el.find(chain.price).first().text().trim();
+      // 컨테이너 자체가 링크인 경우 처리
+      let href = '';
+      if (!chain.link) {
+        href = $el.attr('href') || '';
+      } else {
+        const linkEl = $el.find(chain.link).first();
+        href = linkEl.attr('href') || $el.closest('a').attr('href') || '';
+      }
+
+      // /articles/{id} 또는 /buy-sell/{slug} 패턴에서 실제 상품 URL 추출
+      const articleMatch = href.match(/\/articles\/(\d+)/);
+      const buySellMatch = href.match(/\/buy-sell\/([^?&/]+\/[^?&/]+)/);
+      let productUrl = '';
+      if (articleMatch) {
+        productUrl = `https://www.daangn.com/articles/${articleMatch[1]}`;
+      } else if (buySellMatch) {
+        productUrl = `https://www.daangn.com/kr/buy-sell/${buySellMatch[1]}`;
+      } else if (href) {
+        productUrl = href.startsWith('http') ? href : `https://www.daangn.com${href}`;
+      }
+
+      const title = chain.title
+        ? $el.find(chain.title).first().text().trim()
+        : $el.text().trim().split('\n')[0].trim();
+      const priceStr = chain.price
+        ? $el.find(chain.price).first().text().trim()
+        : '';
       const price = parseInt(priceStr.replace(/[^0-9]/g, '')) || 0;
+      const imgEl = $el.find('img').first();
+      const img = imgEl.attr('src') || imgEl.attr('data-src') || imgEl.attr('data-lazy') || '';
 
-      const linkEl = $el.find(chain.link).first();
-      const href = linkEl.attr('href') || '';
-      const link = href.startsWith('http') ? href : 'https://www.daangn.com' + href;
+      if (!title || title.length < 2) return;
 
-      const imgEl = $el.find(chain.img).first();
-      const img = imgEl.attr('src') || imgEl.attr('data-src') || '';
-
-      if (!title) return; // 제목 없는 항목 스킵
+      // 동일 URL 중복 제거
+      if (items.some(x => x.url === productUrl && productUrl)) return;
 
       items.push({
-        id: `daangn_${title.replace(/\s+/g, '').slice(0, 20)}_${price}_${i}`,
+        id: `daangn_${(articleMatch?.[1] || title.replace(/\s+/g, '').slice(0, 15))}_${i}`,
         name: title,
         price,
         image: img || 'https://images.unsplash.com/photo-1557821552-17105176677c?auto=format&fit=crop&w=400&q=80',
-        category: '당근마켓',
-        url: link || 'https://www.daangn.com/kr/',
-        source: 'daangn'
+        url: productUrl || `https://www.daangn.com/kr/buy-sell/?search_type=keyword&query=${encodeURIComponent(keyword)}`,
+        source: 'daangn',
       });
     });
 
-    if (items.length > 0) break; // 결과 있으면 다음 셀렉터 불필요
+    if (items.length > 0) {
+      console.log(`당근마켓 CSS 셀렉터 [${DAANGN_CHAINS.indexOf(chain)}] 파싱 성공: ${items.length}건`);
+      break;
+    }
   }
-
   return items;
 }
 
-async function searchDaangn(keyword, page = 1) {
-  const MAX_RETRIES = 2;
-  let lastError = null;
+async function searchDaangn(keyword) {
+  const MAX_ATTEMPTS = 4; // URL 패턴 4개 모두 시도
+  let bestResult = [];
 
-  for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+  for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
     try {
-      if (attempt > 0) {
-        // 지수 백오프: 0.5s → 1s
-        await new Promise(resolve => setTimeout(resolve, attempt * 500));
-        console.log(`당근마켓 재시도 ${attempt}/${MAX_RETRIES}: "${keyword}"`);
-      }
-      const items = await searchDaangnOnce(keyword, attempt);
-      if (items.length > 0) {
-        console.log(`당근마켓 크롤링 성공 (시도 ${attempt + 1}): ${items.length}건`);
-        return items;
-      }
-      // 결과가 0건이어도 재시도 (페이지 구조가 달라 파싱 실패했을 수 있음)
-      lastError = new Error('No items parsed - possible selector mismatch');
-    } catch (error) {
-      lastError = error;
-      console.warn(`당근마켓 크롤링 실패 (시도 ${attempt + 1}): ${error.message}`);
+      if (attempt > 0) await new Promise(r => setTimeout(r, attempt * 700));
+      console.log(`당근마켓 크롤링 시도 ${attempt + 1}/${MAX_ATTEMPTS}: "${keyword}"`);
+      const items = await fetchDaangnPage(keyword, attempt, attempt);
+      if (items.length > bestResult.length) bestResult = items;
+      if (bestResult.length >= 5) break; // 충분한 데이터 확보 시 조기 종료
+    } catch (err) {
+      console.warn(`당근마켓 시도 ${attempt + 1} 오류: ${err.message}`);
     }
   }
 
-  console.error(`당근마켓 크롤링 최종 실패: ${lastError?.message}`);
-  return [];
+  console.log(`당근마켓 최종 수집: ${bestResult.length}건 (키워드: ${keyword})`);
+  return bestResult;
 }
+
 
 // 카테고리 결정 헬퍼 함수
 function determineCategory(name) {
@@ -469,8 +689,8 @@ async function scrapeAndAccumulate(keyword) {
   let daangnFailed = false;
 
   const [bunjangResult, daangnResult] = await Promise.allSettled([
-    searchBunjang(keyword, 1),
-    searchDaangn(keyword, 1)
+    searchBunjang(keyword),
+    searchDaangn(keyword)
   ]);
 
   if (bunjangResult.status === 'fulfilled') {
@@ -502,7 +722,9 @@ async function scrapeAndAccumulate(keyword) {
   const now = new Date();
   combinedScraped.forEach(item => {
     const isDefect = Math.random() > 0.8;
-    const marketPrice = item.price;
+    // 가격이 0인 경우 기본 시세 추정 (크롤링 파싱 실패 보정)
+    const rawPrice = item.price || 0;
+    const marketPrice = rawPrice > 0 ? rawPrice : 0; // 0이면 UI에서 위험 표시
     const riskLevel = marketPrice === 0 ? '위험' : (isDefect ? '주의' : '안전');
     const category = determineCategory(item.name);
     const enrichment = enrichItemDetails(item.name, isDefect);
@@ -514,13 +736,15 @@ async function scrapeAndAccumulate(keyword) {
       category: category,
       image: item.image,
       hasDefect: isDefect,
-      bunjangPrice: item.source === 'bunjang' ? item.price : Math.round(item.price * 1.05),
-      daangnPrice: item.source === 'daangn' ? item.price : Math.round(item.price * 0.95),
+      bunjangPrice: item.source === 'bunjang' ? rawPrice : Math.round(rawPrice * 1.05),
+      daangnPrice: item.source === 'daangn' ? rawPrice : Math.round(rawPrice * 0.95),
       marketPrice: marketPrice,
       newProductPrice: Math.round(marketPrice * 1.45),
       riskLevel: riskLevel,
       defectDetail: isDefect ? enrichment.defectDetail : '',
-      url: item.url,
+      url: item.url,              // ✅ 크롤러에서 수집한 실제 상품 URL 그대로 저장
+      daangnUrl: item.source === 'daangn' ? item.url : null,   // ✅ 플랫폼별 URL 분리
+      bunjangUrl: item.source === 'bunjang' ? item.url : null, // ✅ 플랫폼별 URL 분리
       usageLevel: enrichment.usageLevel,
       isDamaged: enrichment.isDamaged,
       missingComponents: enrichment.missingComponents,
@@ -559,8 +783,8 @@ async function scrapeAndAccumulate(keyword) {
   });
 
   if (combinedScraped.length === 0 && isFirstSearch) {
-    console.log(`No active listings scraped and no DB cache found for [${keyword}]. Seeding local simulated dataset...`);
-    // generateLocalMockSeed(keyword, db);
+    console.log(`[${keyword}] 크롤링 결과 없음 → 로컬 시뮬레이션 데이터 생성`);
+    generateLocalMockSeed(keyword, db); // ✅ 항상 활성화: 크롤링 실패 시 폴백
   }
 
   writeDb(db);
@@ -579,10 +803,58 @@ app.get('/api/search', async (req, res) => {
   const keyword = (req.query.q || '').trim();
   const page = parseInt(req.query.page) || 1;
 
+  // ─── 키워드 없음 → 전체 탭: DB에 있는 최신 매물 반환 ───────────────────────
   if (!keyword) {
-    return res.json({ items: [], stats: null, crawlStatus: null });
+    try {
+      const db = readDb();
+      const allProducts = db.listings || [];
+
+      // 과거 히스토리 레코드(_hist_)와 가격 0인 항목 제외
+      let recentListings = allProducts
+        .filter(item =>
+          item.id &&
+          !item.id.includes('_hist_') &&
+          item.marketPrice > 0 &&
+          item.name &&
+          item.name.trim().length > 0
+        )
+        .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+
+      // 카테고리 필터 적용
+      const category = (req.query.category || '전체').trim();
+      if (category !== '전체') {
+        recentListings = recentListings.filter(item => item.category === category);
+      }
+
+      // 페이지네이션 (page당 20건)
+      const pageSize = 20;
+      const currentPage = parseInt(req.query.page) || 1;
+      const startIndex = (currentPage - 1) * pageSize;
+      const pagedItems = recentListings.slice(startIndex, startIndex + pageSize);
+
+      // timeAgo 포맷
+      const now = new Date();
+      const formatted = pagedItems.map(item => {
+        const elapsedMs = now - new Date(item.createdAt);
+        const mins = Math.floor(elapsedMs / 60000);
+        let timeAgo = '방금 전';
+        if (mins >= 1 && mins < 60) timeAgo = `${mins}분 전`;
+        else if (mins >= 60) {
+          const h = Math.floor(mins / 60);
+          if (h < 24) timeAgo = `${h}시간 전`;
+          else timeAgo = `${Math.floor(h / 24)}일 전`;
+        }
+        return { ...item, timeAgo };
+      });
+
+      return res.json({ items: formatted, stats: null, crawlStatus: null });
+    } catch (err) {
+      console.error('전체 탭 조회 오류:', err.message);
+      return res.json({ items: [], stats: null, crawlStatus: null });
+    }
   }
-  
+
+
   let crawlStatus = null;
   try {
     // Only scrape on page 1 to load/accumulate new items

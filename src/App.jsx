@@ -121,17 +121,6 @@ function App() {
       }
 
       const keyword = (query || '').trim();
-      // 검색어 없고 카테고리 전체 → 빈 화면
-      if (!keyword && activeCategory === '전체') {
-        if (thisSearchId !== currentSearchIdRef.current) return;
-        setItems([]);
-        setStats(null);
-        setHasMore(false);
-        setIsLoading(false);
-        setIsLoadingMore(false);
-        setIsRefreshing(false);
-        return;
-      }
 
       const res = await axios.get(
         `/api/search?q=${encodeURIComponent(keyword)}&page=${pageNum}&category=${encodeURIComponent(activeCategory)}`,
