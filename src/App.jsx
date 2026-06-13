@@ -155,6 +155,8 @@ function App() {
           setStats(null);
         }
       } else {
+        // 20건 미만이면 마지막 페이지
+        if (newItems.length < 20) setHasMore(false);
         setItems(prev => isInitial ? newItems : [...(prev || []), ...newItems]);
         if (isInitial) setStats(newStats);
       }
@@ -296,8 +298,33 @@ function App() {
           <StatsDashboard stats={stats} searchQuery={debouncedQuery} items={filteredItems} />
         )}
 
+        {/* 매물 수 + 정렬 헤더 */}
+        {!isLoading && filteredItems.length > 0 && (
+          <div className="flex items-center justify-between mt-8 mb-4 px-1">
+            <div className="flex items-center gap-2">
+              <span className="text-base font-extrabold text-slate-800">
+                {debouncedQuery ? `"${debouncedQuery}" 검색 결과` : '전체 매물'}
+              </span>
+              <span style={{
+                backgroundColor: '#4f46e5',
+                color: 'white',
+                borderRadius: 20,
+                padding: '2px 10px',
+                fontSize: 12,
+                fontWeight: 800,
+              }}>
+                {filteredItems.length}건
+              </span>
+              {isRefreshing && (
+                <span className="text-xs text-slate-400 font-medium">새로고침 중...</span>
+              )}
+            </div>
+            <span className="text-xs text-slate-400 font-medium">최신순</span>
+          </div>
+        )}
+
         {/* 상품 그리드 */}
-        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4 sm:gap-6 mt-8">
+        <div className={`grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-5 sm:gap-7 ${filteredItems.length > 0 || isLoading ? 'mt-0' : 'mt-8'}`}>
           {isLoading ? (
             Array(10).fill(0).map((_, i) => <SkeletonCard key={i} />)
           ) : filteredItems.length > 0 ? (
@@ -313,15 +340,21 @@ function App() {
             })
           ) : (
             <div className="col-span-full py-16 text-center bg-white border border-slate-200 rounded-3xl p-8 flex flex-col items-center justify-center gap-4">
-              <div className="w-16 h-16 bg-slate-50 rounded-full flex items-center justify-center border border-slate-100">
-                <svg className="w-8 h-8 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5"
-                    d="M9.172 16.172a4 4 0 015.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              <div style={{ width: 64, height: 64, backgroundColor: '#eff6ff', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1px solid #bfdbfe' }}>
+                <svg style={{ width: 30, height: 30, color: '#3b82f6' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2"
+                    d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
                 </svg>
               </div>
               <div>
-                <h3 className="text-lg font-bold text-slate-800 mb-1">죄송합니다. 제품을 찾지 못했습니다.</h3>
-                <p className="text-sm text-slate-400">다른 물품 이름을 검색하시거나 검색 키워드를 간결하게 입력해보세요.</p>
+                <h3 style={{ fontSize: 17, fontWeight: 800, color: '#1e293b', marginBottom: 6 }}>
+                  {debouncedQuery ? `"${debouncedQuery}" 검색 결과가 없습니다` : '매물을 불러오는 중입니다'}
+                </h3>
+                <p style={{ fontSize: 13, color: '#64748b', lineHeight: 1.6 }}>
+                  {debouncedQuery
+                    ? '다른 키워드로 검색하거나 카테고리를 변경해보세요.'
+                    : '잠시 후 다시 시도하거나 상단 로고를 클릭하여 새로고침하세요.'}
+                </p>
               </div>
             </div>
           )}
