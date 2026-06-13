@@ -1,4 +1,4 @@
-﻿import express from 'express';
+import express from 'express';
 import cors from 'cors';
 import axios from 'axios';
 import * as cheerio from 'cheerio';
@@ -226,6 +226,109 @@ function seedInitialData() {
 
 // 서버 시작 시 즉시 실행
 seedInitialData();
+
+
+// 인기 키워드로 실제 번개장터 상품을 크롤링해서 전체 탭에 실제 매물 채움
+const AUTO_CRAWL_KEYWORDS = [
+  '아이폰', '갤럭시', '맥북', '에어팟', '아이패드',
+  '닌텐도', '다이슨', '나이키', '노트북', '카메라'
+];
+
+async function autoPopulateFromCrawl() {
+  // 이미 크롤링 데이터가 많으면 스킵 (seed 데이터만 있으면 실행)
+  const db = readDb();
+  const crawledListings = db.listings.filter(l =>
+    l.id && l.id.startsWith('bunjang_') && l.marketPrice > 0
+  );
+  if (crawledListings.length >= 50) {
+    console.log(`크롤링 데이터 이미 ${crawledListings.length}건 존재 - 자동 크롤 스킵`);
+    return;
+  }
+
+  console.log('🔍 백그라운드 자동 크롤링 시작...');
+
+  for (const keyword of AUTO_CRAWL_KEYWORDS) {
+    try {
+      // 번개장터 API 직접 호출 (0페이지만, 20건)
+      const res = await axios.get(
+        `https://api.bunjang.co.kr/api/1/find_v2.json?q=${encodeURIComponent(keyword)}&n=20&page=0`,
+        {
+          timeout: 8000,
+          headers: {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/124.0.0.0 Safari/537.36',
+            'Accept': 'application/json',
+            'Referer': 'https://bunjang.co.kr/',
+          }
+        }
+      );
+
+      if (!res.data?.list) continue;
+      const freshDb = readDb();
+      const existingIds = new Set(freshDb.listings.map(l => l.id));
+      const now = new Date();
+      let added = 0;
+
+      res.data.list.forEach((product, idx) => {
+        if (!product.pid || !product.name || parseInt(product.price) <= 0) return;
+        const itemId = `bunjang_${product.pid}`;
+        if (existingIds.has(itemId)) return;
+
+        const price = parseInt(product.price);
+        const image = product.product_image
+          ? product.product_image.replace('{res}', '400')
+          : 'https://images.unsplash.com/photo-1523275335684-37898b6baf30?auto=format&fit=crop&w=400&q=80';
+
+        const createdAt = new Date(now);
+        createdAt.setMinutes(now.getMinutes() - (idx * 7));
+
+        freshDb.listings.push({
+          id: itemId,
+          name: (product.name || '').trim(),
+          category: determineCategory(product.name),
+          image,
+          hasDefect: false,
+          bunjangPrice: price,
+          daangnPrice: Math.round(price * 0.95),
+          marketPrice: price,
+          newProductPrice: Math.round(price * 1.45),
+          riskLevel: '안전',
+          defectDetail: '',
+          url: `https://bunjang.co.kr/products/${product.pid}`,         // ✅ 실제 구매 URL
+          bunjangUrl: `https://bunjang.co.kr/products/${product.pid}`,  // ✅ 직접 상품 URL
+          daangnUrl: null,
+          usageLevel: '사용감 거의 없음',
+          isDamaged: '파손 없음',
+          missingComponents: '미확인',
+          batteryStatus: '미확인',
+          sellerNotes: '판매자 정보를 확인하려면 상품 페이지를 방문하세요.',
+          timeAgo: `${idx * 5 + 3}분 전`,
+          platform: '번개장터',
+          keyword: keyword.toLowerCase(),
+          createdAt: createdAt.toISOString(),
+        });
+        existingIds.add(itemId);
+        added++;
+      });
+
+      writeDb(freshDb);
+      if (added > 0) console.log(`  ✅ [${keyword}] 번개장터 실제 매물 ${added}건 추가`);
+
+      // 요청 간 딜레이 (서버 부하 방지)
+      await new Promise(r => setTimeout(r, 1500));
+    } catch (err) {
+      console.log(`  ⚠️ [${keyword}] 크롤링 실패: ${err.message}`);
+    }
+  }
+
+  const finalDb = readDb();
+  const realCrawled = finalDb.listings.filter(l => l.id && l.id.startsWith('bunjang_') && l.marketPrice > 0);
+  console.log(`🎯 자동 크롤링 완료: 실제 번개장터 매물 총 ${realCrawled.length}건`);
+}
+
+// 서버 완전 기동 후 3초 뒤 백그라운드에서 실행 (서버 응답 지연 방지)
+setTimeout(() => {
+  autoPopulateFromCrawl().catch(err => console.error('자동 크롤링 오류:', err.message));
+}, 3000);
 
 async function fetchBunjangPage(keyword, page, retries = 2) {
   for (let attempt = 0; attempt <= retries; attempt++) {

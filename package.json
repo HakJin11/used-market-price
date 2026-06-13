@@ -6,7 +6,7 @@
   "scripts": {
     "start": "concurrently \"npm run server\" \"npm run client\"",
     "client": "vite",
-    "server": "nodemon server/server.js",
+    "server": "nodemon --ignore server/db.json server/server.js",
     "build": "vite build",
     "lint": "eslint .",
     "preview": "vite preview"
