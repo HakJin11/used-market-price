@@ -1,4 +1,4 @@
-import express from 'express';
+﻿import express from 'express';
 import cors from 'cors';
 import axios from 'axios';
 import * as cheerio from 'cheerio';
@@ -46,116 +46,187 @@ function writeDb(data) {
 }
 
 // ─── 초기 데이터 시딩 ──────────────────────────────────────────────────────────
-// 서버 시작 시 DB가 비어있으면 기본 매물 데이터를 생성하여 전체 탭이 즉시 표시되도록
+// 서버 시작 시 DB 매물이 부족하면 60개 기본 매물을 자동 생성
 const INITIAL_SEED_ITEMS = [
+  // ── 아이폰 ──
   { keyword: '아이폰', name: '아이폰 15 Pro 128GB 자연티타늄', basePrice: 1100000, category: '가전제품', platform: '번개장터', image: 'https://images.unsplash.com/photo-1695048132532-1c45e5e7f6f1?auto=format&fit=crop&w=400&q=80', bunjangPid: '236812345' },
   { keyword: '아이폰', name: '아이폰 14 256GB 미드나이트', basePrice: 780000, category: '가전제품', platform: '당근마켓', image: 'https://images.unsplash.com/photo-1662947037261-be37cde2b3b0?auto=format&fit=crop&w=400&q=80', daangnId: '254719823' },
+  { keyword: '아이폰', name: '아이폰 15 256GB 핑크', basePrice: 920000, category: '가전제품', platform: '번개장터', image: 'https://images.unsplash.com/photo-1695048132532-1c45e5e7f6f1?auto=format&fit=crop&w=400&q=80', bunjangPid: '238001234' },
+  { keyword: '아이폰', name: '아이폰 13 128GB 스타라이트', basePrice: 580000, category: '가전제품', platform: '당근마켓', image: 'https://images.unsplash.com/photo-1662947037261-be37cde2b3b0?auto=format&fit=crop&w=400&q=80', daangnId: '249301234' },
+  { keyword: '아이폰', name: '아이폰 15 Pro Max 256GB 블랙티타늄', basePrice: 1350000, category: '가전제품', platform: '번개장터', image: 'https://images.unsplash.com/photo-1695048132532-1c45e5e7f6f1?auto=format&fit=crop&w=400&q=80', bunjangPid: '239012345' },
+  // ── 갤럭시 ──
   { keyword: '갤럭시', name: '삼성 갤럭시 S24 Ultra 256GB', basePrice: 1050000, category: '가전제품', platform: '번개장터', image: 'https://images.unsplash.com/photo-1610945265064-0e34e5519bbf?auto=format&fit=crop&w=400&q=80', bunjangPid: '236904512' },
   { keyword: '갤럭시', name: '갤럭시 S23+ 512GB 크림', basePrice: 720000, category: '가전제품', platform: '당근마켓', image: 'https://images.unsplash.com/photo-1610945265064-0e34e5519bbf?auto=format&fit=crop&w=400&q=80', daangnId: '251830944' },
+  { keyword: '갤럭시', name: '갤럭시 S24+ 256GB 그레이', basePrice: 890000, category: '가전제품', platform: '번개장터', image: 'https://images.unsplash.com/photo-1610945265064-0e34e5519bbf?auto=format&fit=crop&w=400&q=80', bunjangPid: '237512340' },
+  { keyword: '갤럭시', name: '갤럭시 Z폴드5 256GB', basePrice: 1200000, category: '가전제품', platform: '당근마켓', image: 'https://images.unsplash.com/photo-1610945265064-0e34e5519bbf?auto=format&fit=crop&w=400&q=80', daangnId: '252901234' },
+  // ── 맥북 ──
   { keyword: '맥북', name: '애플 맥북 에어 M2 13인치 스타라이트', basePrice: 1250000, category: '가전제품', platform: '번개장터', image: 'https://images.unsplash.com/photo-1517336714731-489689fd1ca8?auto=format&fit=crop&w=400&q=80', bunjangPid: '235671234' },
   { keyword: '맥북', name: '맥북 프로 14인치 M3 스페이스블랙', basePrice: 2100000, category: '가전제품', platform: '당근마켓', image: 'https://images.unsplash.com/photo-1517336714731-489689fd1ca8?auto=format&fit=crop&w=400&q=80', daangnId: '253948721' },
+  { keyword: '맥북', name: '맥북 에어 M3 15인치 미드나이트', basePrice: 1580000, category: '가전제품', platform: '번개장터', image: 'https://images.unsplash.com/photo-1517336714731-489689fd1ca8?auto=format&fit=crop&w=400&q=80', bunjangPid: '240123456' },
+  { keyword: '맥북', name: '맥북 프로 16인치 M3 Max', basePrice: 3200000, category: '가전제품', platform: '당근마켓', image: 'https://images.unsplash.com/photo-1517336714731-489689fd1ca8?auto=format&fit=crop&w=400&q=80', daangnId: '256012345' },
+  // ── 에어팟 ──
   { keyword: '에어팟', name: '에어팟 프로 2세대 USB-C', basePrice: 220000, category: '가전제품', platform: '번개장터', image: 'https://images.unsplash.com/photo-1606220945770-b5b6c2c55bf1?auto=format&fit=crop&w=400&q=80', bunjangPid: '237123456' },
   { keyword: '에어팟', name: '에어팟 4세대 ANC 화이트', basePrice: 180000, category: '가전제품', platform: '당근마켓', image: 'https://images.unsplash.com/photo-1606220945770-b5b6c2c55bf1?auto=format&fit=crop&w=400&q=80', daangnId: '255012834' },
+  { keyword: '에어팟', name: '에어팟 맥스 미드나이트', basePrice: 490000, category: '가전제품', platform: '번개장터', image: 'https://images.unsplash.com/photo-1606220945770-b5b6c2c55bf1?auto=format&fit=crop&w=400&q=80', bunjangPid: '238765432' },
+  // ── 닌텐도 ──
   { keyword: '닌텐도', name: '닌텐도 스위치 OLED 흰색', basePrice: 310000, category: '가전제품', platform: '번개장터', image: 'https://images.unsplash.com/photo-1578306899732-7206132cc49d?auto=format&fit=crop&w=400&q=80', bunjangPid: '234987123' },
   { keyword: '닌텐도', name: '닌텐도 스위치 라이트 옐로우', basePrice: 195000, category: '가전제품', platform: '당근마켓', image: 'https://images.unsplash.com/photo-1578306899732-7206132cc49d?auto=format&fit=crop&w=400&q=80', daangnId: '252176543' },
+  { keyword: '닌텐도', name: '닌텐도 스위치 OLED 네온 풀박스', basePrice: 295000, category: '가전제품', platform: '당근마켓', image: 'https://images.unsplash.com/photo-1578306899732-7206132cc49d?auto=format&fit=crop&w=400&q=80', daangnId: '253456789' },
+  // ── 소니 ──
   { keyword: '소니헤드폰', name: '소니 WH-1000XM5 블랙', basePrice: 280000, category: '가전제품', platform: '번개장터', image: 'https://images.unsplash.com/photo-1618366712010-f4ae9c647dcb?auto=format&fit=crop&w=400&q=80', bunjangPid: '236543219' },
-  { keyword: '나이키', name: '나이키 에어맥스 90 화이트 270mm', basePrice: 95000, category: '의류', platform: '번개장터', image: 'https://images.unsplash.com/photo-1542291026-7eec264c27ff?auto=format&fit=crop&w=400&q=80', bunjangPid: '235810234' },
-  { keyword: '나이키', name: '나이키 에어포스 1 OG 화이트 265mm', basePrice: 115000, category: '의류', platform: '당근마켓', image: 'https://images.unsplash.com/photo-1595950653106-6c9ebd614d3a?auto=format&fit=crop&w=400&q=80', daangnId: '253401876' },
-  { keyword: '스탠리', name: '스탠리 퀜처 텀블러 887ml 블랙', basePrice: 42000, category: '생활용품', platform: '번개장터', image: 'https://images.unsplash.com/photo-1622483767028-3f66f32aef97?auto=format&fit=crop&w=400&q=80', bunjangPid: '237654321' },
-  { keyword: '스탠리', name: '스탠리 IceFlow 텀블러 650ml', basePrice: 35000, category: '생활용품', platform: '당근마켓', image: 'https://images.unsplash.com/photo-1622483767028-3f66f32aef97?auto=format&fit=crop&w=400&q=80', daangnId: '255234567' },
-  { keyword: '패딩', name: '노스페이스 눕시 패딩 M사이즈 블랙', basePrice: 180000, category: '의류', platform: '번개장터', image: 'https://images.unsplash.com/photo-1539533018447-63fcce2678e3?auto=format&fit=crop&w=400&q=80', bunjangPid: '236123890' },
-  { keyword: '패딩', name: '캐나다구스 조스탄 파카 M사이즈', basePrice: 650000, category: '의류', platform: '당근마켓', image: 'https://images.unsplash.com/photo-1539533018447-63fcce2678e3?auto=format&fit=crop&w=400&q=80', daangnId: '253678901' },
+  { keyword: '소니헤드폰', name: '소니 WH-1000XM4 미드나이트블루', basePrice: 210000, category: '가전제품', platform: '당근마켓', image: 'https://images.unsplash.com/photo-1618366712010-f4ae9c647dcb?auto=format&fit=crop&w=400&q=80', daangnId: '251234567' },
+  // ── 아이패드 ──
   { keyword: '아이패드', name: '아이패드 프로 11인치 M4 256GB Wi-Fi', basePrice: 1100000, category: '가전제품', platform: '번개장터', image: 'https://images.unsplash.com/photo-1542751110-97427bbecfd8?auto=format&fit=crop&w=400&q=80', bunjangPid: '237890123' },
   { keyword: '아이패드', name: '아이패드 에어 5세대 256GB 스타라이트', basePrice: 680000, category: '가전제품', platform: '당근마켓', image: 'https://images.unsplash.com/photo-1542751110-97427bbecfd8?auto=format&fit=crop&w=400&q=80', daangnId: '254890123' },
+  { keyword: '아이패드', name: '아이패드 미니 6세대 64GB 퍼플', basePrice: 520000, category: '가전제품', platform: '번개장터', image: 'https://images.unsplash.com/photo-1542751110-97427bbecfd8?auto=format&fit=crop&w=400&q=80', bunjangPid: '238123456' },
+  // ── 다이슨 ──
   { keyword: '다이슨', name: '다이슨 에어랩 컴플리트 롱 니켈/코퍼', basePrice: 490000, category: '가전제품', platform: '번개장터', image: 'https://images.unsplash.com/photo-1522338242992-e1a54906a8da?auto=format&fit=crop&w=400&q=80', bunjangPid: '236789012' },
+  { keyword: '다이슨', name: '다이슨 V15 디텍트 무선청소기', basePrice: 420000, category: '가전제품', platform: '당근마켓', image: 'https://images.unsplash.com/photo-1558618666-fcd25c85cd64?auto=format&fit=crop&w=400&q=80', daangnId: '253012345' },
+  // ── 나이키 ──
+  { keyword: '나이키', name: '나이키 에어맥스 90 화이트 270mm', basePrice: 95000, category: '의류', platform: '번개장터', image: 'https://images.unsplash.com/photo-1542291026-7eec264c27ff?auto=format&fit=crop&w=400&q=80', bunjangPid: '235810234' },
+  { keyword: '나이키', name: '나이키 에어포스 1 OG 화이트 265mm', basePrice: 115000, category: '의류', platform: '당근마켓', image: 'https://images.unsplash.com/photo-1595950653106-6c9ebd614d3a?auto=format&fit=crop&w=400&q=80', daangnId: '253401876' },
+  { keyword: '나이키', name: '나이키 조던 1 레트로 하이 OG 시카고', basePrice: 380000, category: '의류', platform: '번개장터', image: 'https://images.unsplash.com/photo-1542291026-7eec264c27ff?auto=format&fit=crop&w=400&q=80', bunjangPid: '236012345' },
+  { keyword: '나이키', name: '나이키 덩크 로우 판다 265mm', basePrice: 145000, category: '의류', platform: '당근마켓', image: 'https://images.unsplash.com/photo-1542291026-7eec264c27ff?auto=format&fit=crop&w=400&q=80', daangnId: '254123456' },
+  // ── 패딩 ──
+  { keyword: '패딩', name: '노스페이스 눕시 패딩 M사이즈 블랙', basePrice: 180000, category: '의류', platform: '번개장터', image: 'https://images.unsplash.com/photo-1539533018447-63fcce2678e3?auto=format&fit=crop&w=400&q=80', bunjangPid: '236123890' },
+  { keyword: '패딩', name: '캐나다구스 조스탄 파카 M사이즈', basePrice: 650000, category: '의류', platform: '당근마켓', image: 'https://images.unsplash.com/photo-1539533018447-63fcce2678e3?auto=format&fit=crop&w=400&q=80', daangnId: '253678901' },
+  { keyword: '패딩', name: '몽클레어 마야 숏패딩 네이비 L', basePrice: 1200000, category: '의류', platform: '번개장터', image: 'https://images.unsplash.com/photo-1539533018447-63fcce2678e3?auto=format&fit=crop&w=400&q=80', bunjangPid: '237234567' },
+  { keyword: '패딩', name: '노스페이스 1996 레트로 눕시 화이트', basePrice: 220000, category: '의류', platform: '당근마켓', image: 'https://images.unsplash.com/photo-1539533018447-63fcce2678e3?auto=format&fit=crop&w=400&q=80', daangnId: '254567890' },
+  // ── 가방 ──
+  { keyword: '가방', name: '구찌 GG 마몽 미니 숄더백 베이지', basePrice: 980000, category: '의류', platform: '번개장터', image: 'https://images.unsplash.com/photo-1548036328-c9fa89d128fa?auto=format&fit=crop&w=400&q=80', bunjangPid: '236345678' },
+  { keyword: '가방', name: '루이비통 네버풀 MM 다미에 에벤', basePrice: 1450000, category: '의류', platform: '당근마켓', image: 'https://images.unsplash.com/photo-1548036328-c9fa89d128fa?auto=format&fit=crop&w=400&q=80', daangnId: '253789012' },
+  { keyword: '가방', name: '샤넬 클래식 플랩 미니 블랙 캐비어', basePrice: 5800000, category: '의류', platform: '번개장터', image: 'https://images.unsplash.com/photo-1548036328-c9fa89d128fa?auto=format&fit=crop&w=400&q=80', bunjangPid: '237456789' },
+  // ── 스탠리 ──
+  { keyword: '스탠리', name: '스탠리 퀜처 텀블러 887ml 블랙', basePrice: 42000, category: '생활용품', platform: '번개장터', image: 'https://images.unsplash.com/photo-1622483767028-3f66f32aef97?auto=format&fit=crop&w=400&q=80', bunjangPid: '237654321' },
+  { keyword: '스탠리', name: '스탠리 IceFlow 텀블러 650ml 라벤더', basePrice: 35000, category: '생활용품', platform: '당근마켓', image: 'https://images.unsplash.com/photo-1622483767028-3f66f32aef97?auto=format&fit=crop&w=400&q=80', daangnId: '255234567' },
+  { keyword: '스탠리', name: '스탠리 퀜처 1.18L 올데이슬림 크림', basePrice: 55000, category: '생활용품', platform: '번개장터', image: 'https://images.unsplash.com/photo-1622483767028-3f66f32aef97?auto=format&fit=crop&w=400&q=80', bunjangPid: '238901234' },
+  // ── 캠핑 ──
+  { keyword: '캠핑', name: '스노우피크 쉘터 TP-880R', basePrice: 380000, category: '생활용품', platform: '번개장터', image: 'https://images.unsplash.com/photo-1504280390367-361c6d9f38f4?auto=format&fit=crop&w=400&q=80', bunjangPid: '235012345' },
+  { keyword: '캠핑', name: '코베아 팰리스 거실형 텐트 4~5인용', basePrice: 250000, category: '생활용품', platform: '당근마켓', image: 'https://images.unsplash.com/photo-1504280390367-361c6d9f38f4?auto=format&fit=crop&w=400&q=80', daangnId: '252345678' },
+  { keyword: '캠핑', name: '콜맨 로드트립 LXE 그릴 그레이', basePrice: 130000, category: '생활용품', platform: '번개장터', image: 'https://images.unsplash.com/photo-1504280390367-361c6d9f38f4?auto=format&fit=crop&w=400&q=80', bunjangPid: '236567890' },
+  // ── 가구/인테리어 ──
+  { keyword: '의자', name: '허먼밀러 에어론 체어 사이즈B 카본', basePrice: 850000, category: '생활용품', platform: '번개장터', image: 'https://images.unsplash.com/photo-1586023492125-27b2c045efd7?auto=format&fit=crop&w=400&q=80', bunjangPid: '234567890' },
+  { keyword: '의자', name: '시디즈 T50 홈 의자 블랙', basePrice: 220000, category: '생활용품', platform: '당근마켓', image: 'https://images.unsplash.com/photo-1586023492125-27b2c045efd7?auto=format&fit=crop&w=400&q=80', daangnId: '251456789' },
+  // ── 카메라 ──
+  { keyword: '카메라', name: '소니 A7M4 바디', basePrice: 1800000, category: '가전제품', platform: '번개장터', image: 'https://images.unsplash.com/photo-1516035069371-29a1b244cc32?auto=format&fit=crop&w=400&q=80', bunjangPid: '235123456' },
+  { keyword: '카메라', name: '캐논 EOS R6 Mark II 바디', basePrice: 2100000, category: '가전제품', platform: '당근마켓', image: 'https://images.unsplash.com/photo-1516035069371-29a1b244cc32?auto=format&fit=crop&w=400&q=80', daangnId: '252567890' },
+  { keyword: '카메라', name: '후지필름 X100VI 실버', basePrice: 1050000, category: '가전제품', platform: '번개장터', image: 'https://images.unsplash.com/photo-1516035069371-29a1b244cc32?auto=format&fit=crop&w=400&q=80', bunjangPid: '237901234' },
+  // ── 노트북 ──
+  { keyword: '노트북', name: 'LG 그램 16 2024 Ultra7 512GB', basePrice: 1450000, category: '가전제품', platform: '번개장터', image: 'https://images.unsplash.com/photo-1496181133206-80ce9b88a853?auto=format&fit=crop&w=400&q=80', bunjangPid: '236678901' },
+  { keyword: '노트북', name: '삼성 갤럭시북4 Pro 360 14인치', basePrice: 1300000, category: '가전제품', platform: '당근마켓', image: 'https://images.unsplash.com/photo-1496181133206-80ce9b88a853?auto=format&fit=crop&w=400&q=80', daangnId: '253890123' },
+  // ── 시계 ──
+  { keyword: '시계', name: '롤렉스 서브마리너 흑콤 블랙다이얼', basePrice: 16500000, category: '의류', platform: '번개장터', image: 'https://images.unsplash.com/photo-1523170335258-f5ed11844a49?auto=format&fit=crop&w=400&q=80', bunjangPid: '232345678' },
+  { keyword: '시계', name: '애플워치 시리즈9 45mm GPS', basePrice: 320000, category: '가전제품', platform: '당근마켓', image: 'https://images.unsplash.com/photo-1523275335684-37898b6baf30?auto=format&fit=crop&w=400&q=80', daangnId: '254901234' },
+  { keyword: '시계', name: '가민 에픽스 프로 Gen2 블랙', basePrice: 580000, category: '가전제품', platform: '번개장터', image: 'https://images.unsplash.com/photo-1523275335684-37898b6baf30?auto=format&fit=crop&w=400&q=80', bunjangPid: '237012345' },
+  // ── 의류 기타 ──
+  { keyword: '자켓', name: '아르카테라스 소프트쉘 자켓 M 그린', basePrice: 85000, category: '의류', platform: '당근마켓', image: 'https://images.unsplash.com/photo-1551028719-00167b16eac5?auto=format&fit=crop&w=400&q=80', daangnId: '253123456' },
+  { keyword: '자켓', name: '나이키 테크 플리스 세트 블랙 L', basePrice: 95000, category: '의류', platform: '번개장터', image: 'https://images.unsplash.com/photo-1551028719-00167b16eac5?auto=format&fit=crop&w=400&q=80', bunjangPid: '236890123' },
+  // ── 생활 가전 ──
+  { keyword: '공기청정기', name: '다이슨 퓨어 쿨 TP07 화이트/실버', basePrice: 350000, category: '가전제품', platform: '번개장터', image: 'https://images.unsplash.com/photo-1585771724684-38269d6639fd?auto=format&fit=crop&w=400&q=80', bunjangPid: '235890123' },
+  { keyword: '공기청정기', name: '삼성 비스포크 큐브 에어 AX60', basePrice: 280000, category: '가전제품', platform: '당근마켓', image: 'https://images.unsplash.com/photo-1585771724684-38269d6639fd?auto=format&fit=crop&w=400&q=80', daangnId: '252678901' },
 ];
 
 function seedInitialData() {
   const db = readDb();
   const realListings = db.listings.filter(l => l.id && !l.id.includes('_hist_') && l.marketPrice > 0);
-  
-  // 이미 충분한 데이터 있으면 스킵
-  if (realListings.length >= 10) {
+
+  // 40건 미만이면 재시딩 (서버 재시작마다 데이터 보충)
+  if (realListings.length >= 40) {
     console.log(`DB에 기존 매물 ${realListings.length}건 존재 - 초기 시딩 스킵`);
     return;
   }
 
-  console.log('DB가 비어있음 - 초기 매물 데이터 시딩 시작...');
+  console.log(`DB 매물 ${realListings.length}건 → 60건으로 증가 시딩 시작...`);
   const now = new Date();
-  const riskLevels = ['안전', '안전', '안전', '주의', '안전', '주의', '안전', '안전', '위험', '안전'];
+  const riskMap = ['안전', '안전', '주의', '안전', '안전', '주의', '안전', '위험', '안전', '안전'];
+
+  // 기존 seed ID 중복 방지
+  const existingIds = new Set(db.listings.map(l => l.id));
 
   INITIAL_SEED_ITEMS.forEach((seed, idx) => {
-    const variance = 0.9 + Math.random() * 0.15;
-    const itemPrice = Math.round(seed.basePrice * variance);
-    const isDefect = idx % 4 === 3;
-    const riskLevel = riskLevels[idx % riskLevels.length];
-    
-    // ✅ 실제 상품 URL 생성 (번개장터: /products/{pid}, 당근마켓: /articles/{id})
-    const bunjangUrl = seed.bunjangPid ? `https://bunjang.co.kr/products/${seed.bunjangPid}` : null;
-    const daangnUrl = seed.daangnId ? `https://www.daangn.com/articles/${seed.daangnId}` : null;
-    const url = bunjangUrl || daangnUrl || 
-      (seed.platform === '번개장터'
+    const seedId = `seed_${seed.keyword}_${idx}`;
+    if (existingIds.has(seedId)) return; // 이미 존재하면 스킵
+
+    // 3가지 가격 변동을 만들어 매물 다양성 증가
+    const variants = [
+      { priceMul: 0.88 + Math.random() * 0.08, defect: false, suffix: 'S급 풀박스' },
+      { priceMul: 0.78 + Math.random() * 0.08, defect: false, suffix: '상태 양호' },
+      { priceMul: 0.68 + Math.random() * 0.08, defect: true,  suffix: '생활기스 있음' },
+    ];
+
+    variants.forEach((v, vi) => {
+      const itemPrice = Math.round(seed.basePrice * v.priceMul);
+      const riskLevel = v.defect ? '주의' : riskMap[idx % riskMap.length];
+
+      const bunjangUrl = seed.bunjangPid ? `https://bunjang.co.kr/products/${seed.bunjangPid}` : null;
+      const daangnUrl  = seed.daangnId   ? `https://www.daangn.com/articles/${seed.daangnId}`   : null;
+      const fallbackUrl = seed.platform === '번개장터'
         ? `https://m.bunjang.co.kr/search/products?q=${encodeURIComponent(seed.keyword)}`
-        : `https://www.daangn.com/kr/buy-sell/?search_type=keyword&query=${encodeURIComponent(seed.keyword)}`);
+        : `https://www.daangn.com/kr/buy-sell/?search_type=keyword&query=${encodeURIComponent(seed.keyword)}`;
+      const url = bunjangUrl || daangnUrl || fallbackUrl;
 
-    const createdAt = new Date(now);
-    createdAt.setMinutes(now.getMinutes() - (idx * 17 + Math.floor(Math.random() * 30)));
+      // 시간 분산: 최근 72시간 내 무작위 등록 시간
+      const createdAt = new Date(now);
+      createdAt.setMinutes(now.getMinutes() - (idx * 19 + vi * 43 + Math.floor(Math.random() * 60)));
 
-    const item = {
-      id: `seed_${seed.keyword}_${idx}_${Date.now()}`,
-      name: seed.name,
-      category: seed.category,
-      image: seed.image,
-      hasDefect: isDefect,
-      bunjangPrice: seed.platform === '번개장터' ? itemPrice : Math.round(itemPrice * 1.05),
-      daangnPrice: seed.platform === '당근마켓' ? itemPrice : Math.round(itemPrice * 0.95),
-      marketPrice: itemPrice,
-      newProductPrice: Math.round(itemPrice * 1.45),
-      riskLevel: riskLevel,
-      defectDetail: isDefect ? '사용 중 생긴 미세 기스 있음' : '',
-      url,
-      bunjangUrl,    // ✅ 플랫폼별 URL 저장
-      daangnUrl,     // ✅ 플랫폼별 URL 저장
-      usageLevel: isDefect ? '사용감 있음' : '사용감 거의 없음',
-      isDamaged: isDefect ? '미세 기스 있음' : '파손 없음',
-      missingComponents: '없음 (풀박스)',
-      batteryStatus: seed.category === '가전제품' ? `${88 + Math.floor(Math.random() * 10)}%` : '해당없음',
-      sellerNotes: '정상 작동하며 상태 좋습니다. 급매로 싸게 올립니다.',
-      timeAgo: `${idx * 10 + 5}분 전`,
-      platform: seed.platform,
-      keyword: seed.keyword,
-      createdAt: createdAt.toISOString(),
-    };
+      const itemId = `${seedId}_v${vi}`;
+      const item = {
+        id: itemId,
+        name: `${seed.name} (${v.suffix})`,
+        category: seed.category,
+        image: seed.image,
+        hasDefect: v.defect,
+        bunjangPrice: seed.platform === '번개장터' ? itemPrice : Math.round(itemPrice * 1.05),
+        daangnPrice:  seed.platform === '당근마켓'  ? itemPrice : Math.round(itemPrice * 0.95),
+        marketPrice: itemPrice,
+        newProductPrice: Math.round(seed.basePrice * 1.45),
+        riskLevel,
+        defectDetail: v.defect ? '사용 중 미세 기스 발생, 기능 이상 없음' : '',
+        url,
+        bunjangUrl,
+        daangnUrl,
+        usageLevel: v.defect ? '사용감 있음' : vi === 0 ? '미개봉 신품에 가까움' : '사용감 거의 없음',
+        isDamaged: v.defect ? '미세 기스 있음' : '파손 없음',
+        missingComponents: vi === 2 ? '충전케이블 없음' : '없음 (풀박스)',
+        batteryStatus: seed.category === '가전제품' ? `${85 + Math.floor(Math.random() * 13)}%` : '해당없음',
+        sellerNotes: v.defect
+          ? '사용감 반영하여 합리적인 가격으로 올립니다. 기능 이상 없습니다.'
+          : '급하게 처분합니다. 상태 매우 좋습니다.',
+        timeAgo: `${idx * 10 + vi * 3 + 2}분 전`,
+        platform: seed.platform,
+        keyword: seed.keyword,
+        createdAt: createdAt.toISOString(),
+      };
 
-    db.listings.push(item);
+      db.listings.push(item);
+      existingIds.add(itemId);
 
-    // 가격 히스토리 생성 (통계 차트용)
-    [3, 7, 14, 21, 30].forEach(daysAgo => {
-      const hDate = new Date(now);
-      hDate.setDate(now.getDate() - daysAgo);
-      const hPrice = Math.round(itemPrice * (0.92 + Math.random() * 0.16));
-      db.listings.push({
-        ...item,
-        id: `${item.id}_hist_${daysAgo}`,
-        marketPrice: hPrice,
-        bunjangPrice: seed.platform === '번개장터' ? hPrice : Math.round(hPrice * 1.05),
-        daangnPrice: seed.platform === '당근마켓' ? hPrice : Math.round(hPrice * 0.95),
-        createdAt: hDate.toISOString(),
-        timeAgo: `${daysAgo}일 전`,
+      // 히스토리 데이터 (통계 차트용)
+      [3, 7, 14, 21, 30].forEach(daysAgo => {
+        const hDate = new Date(now);
+        hDate.setDate(now.getDate() - daysAgo);
+        const hPrice = Math.round(itemPrice * (0.90 + Math.random() * 0.18));
+        db.listings.push({
+          ...item,
+          id: `${itemId}_hist_${daysAgo}`,
+          marketPrice: hPrice,
+          bunjangPrice: seed.platform === '번개장터' ? hPrice : Math.round(hPrice * 1.05),
+          daangnPrice:  seed.platform === '당근마켓'  ? hPrice : Math.round(hPrice * 0.95),
+          createdAt: hDate.toISOString(),
+          timeAgo: `${daysAgo}일 전`,
+        });
       });
     });
   });
 
   writeDb(db);
-  console.log(`초기 시딩 완료: ${INITIAL_SEED_ITEMS.length}건 추가`);
+  const newReal = db.listings.filter(l => l.id && !l.id.includes('_hist_') && l.marketPrice > 0);
+  console.log(`시딩 완료: 총 ${newReal.length}건 매물 (히스토리 제외)`);
 }
 
 // 서버 시작 시 즉시 실행
 seedInitialData();
 
-// ─── 번개장터 크롤링 ───────────────────────────────────────────────────────────
-// API를 사용하여 최대 3페이지(각 20건) = 최대 60건 수집
-// 각 페이지별 재시도 2회, 지수 백오프 적용
 async function fetchBunjangPage(keyword, page, retries = 2) {
   for (let attempt = 0; attempt <= retries; attempt++) {
     try {
