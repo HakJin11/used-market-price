@@ -2,17 +2,18 @@ import { X, ExternalLink, ShieldAlert, ClipboardCheck, MessageSquare } from 'luc
 
 // ─── URL 유효성: 실제 상품 페이지 URL 여부 ────────────────────────────────────
 function isDirectProductUrl(url) {
-  if (!url || typeof url !== 'string') return false;
+  if (!url || typeof url !== 'string' || url.trim() === '') return false;
   try {
-    const u = new URL(url);
+    const u = new URL(url.trim());
     const h = u.hostname;
     // 번개장터 실제 상품 URL: bunjang.co.kr/products/{숫자}
     if (h.includes('bunjang.co.kr')) {
       return /\/products\/\d+/.test(u.pathname);
     }
-    // 당근마켓 실제 상품 URL: daangn.com/articles/{숫자}
-    if (h.includes('daangn.com') || h.includes('karrot.market')) {
-      return /\/articles\/\d+/.test(u.pathname);
+    // 당근마켓 실제 상품 URL: daangn.com/articles/{숫자} 또는 /buy-sell/.../{숫자}
+    if (h.includes('daangn.com') || h.includes('karrot.market') || h.includes('karrotmarket.com')) {
+      return /\/articles\/\d+/.test(u.pathname) ||
+        /\/buy-sell\/.+\/\d+/.test(u.pathname);
     }
     return false;
   } catch {
@@ -20,7 +21,7 @@ function isDirectProductUrl(url) {
   }
 }
 
-// 검색 폴백 URL (키워드로 검색 결과 페이지)
+// 검색 폴백 URL
 function makeSearchFallback(platform, keyword) {
   const q = encodeURIComponent((keyword || '').trim());
   if (!q) return null;
@@ -29,53 +30,62 @@ function makeSearchFallback(platform, keyword) {
   return null;
 }
 
-// ─── 플랫폼별 링크 결정 (우선순위: 직접URL → item.url → 검색폴백) ─────────────
+// ─── 플랫폼별 링크 결정 ──────────────────────────────────────────────────────
+// 우선순위: ① bunjangUrl/daangnUrl 전용 필드 → ② item.url → ③ 검색 폴백
 function resolveLinks(item) {
   const platform = item.platform || '';
-  const keyword = item.keyword || item.name || '';
+  const keyword  = item.keyword || item.name || '';
 
-  // ① 전용 필드 확인
-  const directDaangn  = isDirectProductUrl(item.daangnUrl)  ? item.daangnUrl  : null;
+  // ① 전용 필드 (bunjangUrl / daangnUrl)
   const directBunjang = isDirectProductUrl(item.bunjangUrl) ? item.bunjangUrl : null;
+  const directDaangn  = isDirectProductUrl(item.daangnUrl)  ? item.daangnUrl  : null;
 
-  // ② item.url로 플랫폼별 직접 URL 결정
-  const itemUrlDirect = isDirectProductUrl(item.url) ? item.url : null;
+  // ② item.url — 플랫폼 무관하게 어느 쪽 URL인지 판별
+  const itemUrlIsBunjang = isDirectProductUrl(item.url) &&
+    (item.url || '').includes('bunjang.co.kr');
+  const itemUrlIsDaangn  = isDirectProductUrl(item.url) &&
+    ((item.url || '').includes('daangn.com') || (item.url || '').includes('karrot'));
 
-  // 당근마켓 링크
-  let daangn = null;
-  let daangnDirect = false;
-  if (directDaangn) {
-    daangn = directDaangn; daangnDirect = true;
-  } else if (platform === '당근마켓' && itemUrlDirect) {
-    daangn = itemUrlDirect; daangnDirect = true;
-  } else {
-    daangn = makeSearchFallback('당근마켓', keyword); daangnDirect = false;
-  }
-
-  // 번개장터 링크
-  let bunjang = null;
+  // ─ 번개장터 링크 결정 ─
+  let bunjang       = null;
   let bunjangDirect = false;
   if (directBunjang) {
     bunjang = directBunjang; bunjangDirect = true;
-  } else if (platform === '번개장터' && itemUrlDirect) {
-    bunjang = itemUrlDirect; bunjangDirect = true;
+  } else if (itemUrlIsBunjang) {
+    bunjang = item.url; bunjangDirect = true;
+  } else if (platform === '번개장터') {
+    // 플랫폼이 번개장터인데 직접 URL 없으면 검색 폴백
+    bunjang = makeSearchFallback('번개장터', keyword); bunjangDirect = false;
   } else {
     bunjang = makeSearchFallback('번개장터', keyword); bunjangDirect = false;
   }
 
-  // CTA: 현재 플랫폼의 직접 URL
-  const ctaUrl    = platform === '당근마켓' ? daangn : bunjang;
+  // ─ 당근마켓 링크 결정 ─
+  let daangn       = null;
+  let daangnDirect = false;
+  if (directDaangn) {
+    daangn = directDaangn; daangnDirect = true;
+  } else if (itemUrlIsDaangn) {
+    daangn = item.url; daangnDirect = true;
+  } else if (platform === '당근마켓') {
+    daangn = makeSearchFallback('당근마켓', keyword); daangnDirect = false;
+  } else {
+    daangn = makeSearchFallback('당근마켓', keyword); daangnDirect = false;
+  }
+
+  // CTA: 자신의 플랫폼 링크를 CTA로 사용
+  const ctaUrl    = platform === '당근마켓' ? daangn    : bunjang;
   const ctaDirect = platform === '당근마켓' ? daangnDirect : bunjangDirect;
 
   return { daangn, daangnDirect, bunjang, bunjangDirect, ctaUrl, ctaDirect, platform };
 }
 
-// ─── 플랫폼 링크 버튼 컴포넌트 ───────────────────────────────────────────────
-function PlatformLinkBtn({ url, isDirect, label, color, bg, border }) {
+// ─── 플랫폼 링크 버튼 ────────────────────────────────────────────────────────
+function PlatformLinkBtn({ url, isDirect, color, bg, border }) {
   if (!url) {
     return (
-      <p style={{ fontSize: 11, color: '#94a3b8', fontWeight: 500 }}>
-        현재 원본 매물을 찾을 수 없습니다.
+      <p style={{ fontSize: 11, color: '#94a3b8', fontWeight: 500, margin: 0 }}>
+        원본 매물을 찾을 수 없습니다.
       </p>
     );
   }
@@ -87,15 +97,15 @@ function PlatformLinkBtn({ url, isDirect, label, color, bg, border }) {
       style={{
         display: 'inline-flex', alignItems: 'center', gap: 4,
         fontSize: 11, fontWeight: 800, color,
-        backgroundColor: bg, padding: '4px 10px',
+        backgroundColor: bg, padding: '5px 11px',
         borderRadius: 8, textDecoration: 'none',
-        border: `1px solid ${border}`,
+        border: `1.5px solid ${border}`,
         transition: 'opacity 0.15s',
       }}
       onMouseEnter={e => e.currentTarget.style.opacity = '0.8'}
       onMouseLeave={e => e.currentTarget.style.opacity = '1'}
     >
-      {isDirect ? '원본 매물 보기' : '검색 결과 보기'}
+      {isDirect ? '원본 매물 보기 →' : '검색 결과 보기 →'}
       <ExternalLink style={{ width: 11, height: 11 }} />
     </a>
   );
@@ -107,15 +117,15 @@ export default function DetailModal({ item, onClose }) {
   const links = resolveLinks(item);
   const platform = item.platform || '';
 
-  const usageLevel       = item.usageLevel       || (item.hasDefect ? '사용감 있음' : '사용감 거의 없음');
-  const isDamaged        = item.isDamaged        || (item.hasDefect ? '미세 찍힘 존재' : '파손 없음');
-  const missingComponents = item.missingComponents || '없음 (풀박스)';
-  const batteryStatus    = item.batteryStatus    || '해당없음';
-  const sellerNotes      = item.sellerNotes      ||
-    '실사용 기간이 짧아 매우 깨끗하게 보관하였으며 기기 작동 상태 보증합니다.';
-  const defectDetail     = item.hasDefect
-    ? (item.defectDetail || '세부 하자 검토 필요')
-    : '검수 완료 (발견된 하자 없음)';
+  const usageLevel        = item.usageLevel        || (item.hasDefect ? '사용감 있음' : '사용감 거의 없음');
+  const isDamaged         = item.isDamaged         || (item.hasDefect ? '미세 흠집 존재' : '파손 없음');
+  const missingComponents = item.missingComponents  || '없음 (풀박스)';
+  const batteryStatus     = item.batteryStatus     || '해당없음';
+  const sellerNotes       = item.sellerNotes       ||
+    '직접 확인 후 구매를 권장합니다. 실제 상품 페이지에서 판매자 정보를 확인하세요.';
+  const defectDetail      = item.hasDefect
+    ? (item.defectDetail || '세부 하자 확인 필요')
+    : '검수 완료 (하자 없음)';
 
   const riskColors = {
     '안전': { bg: '#dcfce7', color: '#14532d', border: '#86efac' },
@@ -128,19 +138,15 @@ export default function DetailModal({ item, onClose }) {
     <div
       style={{
         position: 'fixed', inset: 0, zIndex: 50,
-        display: 'flex', alignItems: 'flex-end',
-        justifyContent: 'center',
+        display: 'flex', alignItems: 'flex-end', justifyContent: 'center',
         backgroundColor: 'rgba(15,23,42,0.5)',
         backdropFilter: 'blur(4px)',
-        padding: '0 0 0 0',
       }}
       onClick={onClose}
     >
-      {/* Modal box */}
       <div
         style={{
-          background: 'white',
-          width: '100%', maxWidth: 680,
+          background: 'white', width: '100%', maxWidth: 680,
           borderRadius: '28px 28px 0 0',
           overflow: 'hidden',
           boxShadow: '0 -8px 40px rgba(0,0,0,0.18)',
@@ -149,8 +155,8 @@ export default function DetailModal({ item, onClose }) {
         }}
         onClick={e => e.stopPropagation()}
       >
-        {/* ── 헤더 이미지 ── */}
-        <div style={{ position: 'relative', height: 230, background: '#f1f5f9', flexShrink: 0 }}>
+        {/* 헤더 이미지 */}
+        <div style={{ position: 'relative', height: 220, background: '#f1f5f9', flexShrink: 0 }}>
           <img
             src={item.image}
             alt={item.name}
@@ -160,7 +166,6 @@ export default function DetailModal({ item, onClose }) {
                 'https://images.unsplash.com/photo-1523275335684-37898b6baf30?auto=format&fit=crop&w=800&q=80';
             }}
           />
-          {/* 닫기 버튼 */}
           <button
             onClick={onClose}
             style={{
@@ -173,7 +178,6 @@ export default function DetailModal({ item, onClose }) {
           >
             <X style={{ width: 17, height: 17, color: '#374151' }} />
           </button>
-          {/* 플랫폼 배지 */}
           {platform && (
             <div style={{
               position: 'absolute', bottom: 12, left: 14,
@@ -187,11 +191,11 @@ export default function DetailModal({ item, onClose }) {
           )}
         </div>
 
-        {/* ── 스크롤 본문 ── */}
-        <div style={{ overflowY: 'auto', flex: 1, padding: '24px 22px 32px' }}>
+        {/* 스크롤 본문 */}
+        <div style={{ overflowY: 'auto', flex: 1, padding: '22px 20px 32px' }}>
 
           {/* 상품명 + 위험도 */}
-          <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12, marginBottom: 20 }}>
+          <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12, marginBottom: 18 }}>
             <div style={{ flex: 1 }}>
               <div style={{ fontSize: 10, fontWeight: 800, color: '#6366f1', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 4 }}>
                 {item.category || ''}
@@ -211,13 +215,13 @@ export default function DetailModal({ item, onClose }) {
             </div>
           </div>
 
-          {/* ── 검수 보고서 ── */}
+          {/* 검수 보고서 */}
           <div style={{
             background: '#f8fafc', border: '1px solid #e2e8f0',
-            borderRadius: 18, padding: '18px 18px 16px', marginBottom: 20,
+            borderRadius: 18, padding: '16px 16px 14px', marginBottom: 18,
           }}>
             <h3 style={{
-              display: 'flex', alignItems: 'center', gap: 6, margin: '0 0 16px',
+              display: 'flex', alignItems: 'center', gap: 6, margin: '0 0 14px',
               fontSize: 10, fontWeight: 800, color: '#64748b',
               textTransform: 'uppercase', letterSpacing: '0.07em',
               paddingBottom: 10, borderBottom: '1px solid #e2e8f0',
@@ -226,8 +230,7 @@ export default function DetailModal({ item, onClose }) {
               통합 검수 보고서
             </h3>
 
-            {/* 2열 그리드 */}
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 10 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 8 }}>
               {[
                 {
                   label: '하자 여부',
@@ -235,22 +238,22 @@ export default function DetailModal({ item, onClose }) {
                     <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
                       {item.hasDefect
                         ? <ShieldAlert style={{ width: 13, height: 13, color: '#dc2626', flexShrink: 0 }} />
-                        : <span style={{ width: 9, height: 9, borderRadius: '50%', backgroundColor: '#16a34a', display: 'inline-block', flexShrink: 0 }} />}
-                      <span style={{ fontSize: 12, fontWeight: 800, color: '#1e293b', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        : <span style={{ width: 8, height: 8, borderRadius: '50%', backgroundColor: '#16a34a', display: 'inline-block' }} />}
+                      <span style={{ fontSize: 12, fontWeight: 800, color: '#1e293b' }}>
                         {defectDetail}
                       </span>
                     </div>
                   ),
                 },
                 {
-                  label: '사용감 상태',
+                  label: '사용감',
                   node: <span style={{ fontSize: 12, fontWeight: 800, color: '#1e293b' }}>{usageLevel}</span>,
                 },
                 {
-                  label: '파손 여부',
+                  label: '파손',
                   node: (
                     <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
-                      <span style={{ width: 8, height: 8, borderRadius: '50%', backgroundColor: item.hasDefect ? '#ea580c' : '#16a34a', display: 'inline-block', flexShrink: 0 }} />
+                      <span style={{ width: 8, height: 8, borderRadius: '50%', backgroundColor: item.hasDefect ? '#ea580c' : '#16a34a', display: 'inline-block' }} />
                       <span style={{ fontSize: 12, fontWeight: 800, color: '#1e293b' }}>{isDamaged}</span>
                     </div>
                   ),
@@ -261,28 +264,27 @@ export default function DetailModal({ item, onClose }) {
                 },
               ].map(({ label, node }, i) => (
                 <div key={i} style={{
-                  background: 'white', padding: '11px 12px', borderRadius: 10,
+                  background: 'white', padding: '10px 12px', borderRadius: 10,
                   border: '1px solid #f1f5f9',
                 }}>
-                  <div style={{ fontSize: 10, fontWeight: 700, color: '#94a3b8', marginBottom: 5 }}>{label}</div>
+                  <div style={{ fontSize: 10, fontWeight: 700, color: '#94a3b8', marginBottom: 4 }}>{label}</div>
                   {node}
                 </div>
               ))}
             </div>
 
             {/* 배터리 */}
-            <div style={{ background: 'white', padding: '11px 12px', borderRadius: 10, border: '1px solid #f1f5f9', marginBottom: 10 }}>
-              <div style={{ fontSize: 10, fontWeight: 700, color: '#94a3b8', marginBottom: 5 }}>배터리 상태</div>
+            <div style={{ background: 'white', padding: '10px 12px', borderRadius: 10, border: '1px solid #f1f5f9', marginBottom: 8 }}>
+              <div style={{ fontSize: 10, fontWeight: 700, color: '#94a3b8', marginBottom: 4 }}>배터리 상태</div>
               <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                 <span style={{ fontSize: 12, fontWeight: 800, color: '#1e293b' }}>{batteryStatus}</span>
-                {batteryStatus !== '해당없음' && (
-                  <div style={{ flex: 1, height: 7, background: '#f1f5f9', borderRadius: 4, overflow: 'hidden' }}>
+                {batteryStatus !== '해당없음' && batteryStatus !== '미확인' && (
+                  <div style={{ flex: 1, height: 6, background: '#f1f5f9', borderRadius: 4, overflow: 'hidden' }}>
                     <div style={{
                       width: batteryStatus,
                       height: '100%',
                       background: parseInt(batteryStatus) > 85 ? '#16a34a' : '#ea580c',
                       borderRadius: 4,
-                      transition: 'width 0.5s',
                     }} />
                   </div>
                 )}
@@ -290,10 +292,10 @@ export default function DetailModal({ item, onClose }) {
             </div>
 
             {/* 판매자 코멘트 */}
-            <div style={{ background: 'white', padding: '11px 12px', borderRadius: 10, border: '1px solid #f1f5f9' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 10, fontWeight: 800, color: '#94a3b8', marginBottom: 5 }}>
+            <div style={{ background: 'white', padding: '10px 12px', borderRadius: 10, border: '1px solid #f1f5f9' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 10, fontWeight: 800, color: '#94a3b8', marginBottom: 4 }}>
                 <MessageSquare style={{ width: 12, height: 12, color: '#6366f1' }} />
-                판매자 게시글 분석
+                판매자 정보
               </div>
               <p style={{ fontSize: 12, color: '#374151', lineHeight: 1.65, margin: 0, fontStyle: 'italic' }}>
                 &ldquo; {sellerNotes} &rdquo;
@@ -301,10 +303,10 @@ export default function DetailModal({ item, onClose }) {
             </div>
           </div>
 
-          {/* ── 가격 섹션 ── */}
+          {/* 가격 섹션 */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
 
-            {/* AI 적정가 강조 박스 */}
+            {/* AI 적정가 */}
             <div style={{
               display: 'flex', justifyContent: 'space-between', alignItems: 'center',
               background: '#eff6ff', border: '1.5px solid #93c5fd',
@@ -321,11 +323,10 @@ export default function DetailModal({ item, onClose }) {
               </span>
             </div>
 
-            {/* 플랫폼별 시세 카드 */}
+            {/* 플랫폼 시세 카드 */}
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-
               {/* 당근마켓 */}
-              <div style={{ background: 'white', padding: '15px 15px', borderRadius: 16, border: '1.5px solid #fed7aa' }}>
+              <div style={{ background: 'white', padding: '14px', borderRadius: 16, border: '1.5px solid #fed7aa' }}>
                 <div style={{ fontSize: 11, fontWeight: 800, color: '#ea580c', marginBottom: 4 }}>🥕 당근마켓</div>
                 <div style={{ fontSize: 19, fontWeight: 900, color: '#111827', marginBottom: 10, letterSpacing: '-0.01em' }}>
                   {(item.daangnPrice || item.marketPrice || 0).toLocaleString()}원
@@ -340,7 +341,7 @@ export default function DetailModal({ item, onClose }) {
               </div>
 
               {/* 번개장터 */}
-              <div style={{ background: 'white', padding: '15px 15px', borderRadius: 16, border: '1.5px solid #fca5a5' }}>
+              <div style={{ background: 'white', padding: '14px', borderRadius: 16, border: '1.5px solid #fca5a5' }}>
                 <div style={{ fontSize: 11, fontWeight: 800, color: '#dc2626', marginBottom: 4 }}>⚡ 번개장터</div>
                 <div style={{ fontSize: 19, fontWeight: 900, color: '#111827', marginBottom: 10, letterSpacing: '-0.01em' }}>
                   {(item.bunjangPrice || item.marketPrice || 0).toLocaleString()}원
@@ -355,7 +356,7 @@ export default function DetailModal({ item, onClose }) {
               </div>
             </div>
 
-            {/* ✅ 원본 매물 CTA — 직접 URL이 있을 때만 */}
+            {/* ✅ 원본 매물 CTA — 직접 URL인 경우만 표시 */}
             {links.ctaDirect && links.ctaUrl && (
               <a
                 href={links.ctaUrl}

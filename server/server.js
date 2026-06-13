@@ -1,4 +1,4 @@
-import express from 'express';
+﻿import express from 'express';
 import cors from 'cors';
 import axios from 'axios';
 import * as cheerio from 'cheerio';
@@ -227,108 +227,144 @@ function seedInitialData() {
 // 서버 시작 시 즉시 실행
 seedInitialData();
 
-
-// 인기 키워드로 실제 번개장터 상품을 크롤링해서 전체 탭에 실제 매물 채움
+// ─── 백그라운드 자동 크롤링 ────────────────────────────────────────────────────
+// 인기 키워드 20종을 페이지당 20건 × 3페이지 = 최대 1200건 수집
 const AUTO_CRAWL_KEYWORDS = [
   '아이폰', '갤럭시', '맥북', '에어팟', '아이패드',
-  '닌텐도', '다이슨', '나이키', '노트북', '카메라'
+  '닌텐도', '다이슨', '나이키', '노트북', '카메라',
+  '소니헤드폰', '애플워치', '갤럭시워치', '패딩', '나이키조던',
+  '스탠리텀블러', '허먼밀러', '후지필름', '로봇청소기', '무선이어폰'
 ];
 
-async function autoPopulateFromCrawl() {
-  // 이미 크롤링 데이터가 많으면 스킵 (seed 데이터만 있으면 실행)
-  const db = readDb();
-  const crawledListings = db.listings.filter(l =>
-    l.id && l.id.startsWith('bunjang_') && l.marketPrice > 0
+async function fetchBunjangPageSingle(keyword, page) {
+  const res = await axios.get(
+    `https://api.bunjang.co.kr/api/1/find_v2.json?q=${encodeURIComponent(keyword)}&n=20&page=${page}`,
+    {
+      timeout: 8000,
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/124.0.0.0 Safari/537.36',
+        'Accept': 'application/json',
+        'Referer': 'https://bunjang.co.kr/',
+      },
+    }
   );
-  if (crawledListings.length >= 50) {
-    console.log(`크롤링 데이터 이미 ${crawledListings.length}건 존재 - 자동 크롤 스킵`);
+  return res.data?.list || [];
+}
+
+async function autoPopulateFromCrawl() {
+  const db = readDb();
+  const crawledCount = db.listings.filter(l =>
+    l.id && (l.id.startsWith('bunjang_') || l.id.startsWith('crawl_')) && l.marketPrice > 0
+  ).length;
+
+  // 200건 이상이면 스킵
+  if (crawledCount >= 200) {
+    console.log(`✅ 실매물 이미 ${crawledCount}건 존재 - 자동 크롤 스킵`);
     return;
   }
 
-  console.log('🔍 백그라운드 자동 크롤링 시작...');
+  console.log(`🔍 자동 크롤링 시작 (현재 ${crawledCount}건 → 목표 600건+)...`);
+  let totalAdded = 0;
 
   for (const keyword of AUTO_CRAWL_KEYWORDS) {
     try {
-      // 번개장터 API 직접 호출 (0페이지만, 20건)
-      const res = await axios.get(
-        `https://api.bunjang.co.kr/api/1/find_v2.json?q=${encodeURIComponent(keyword)}&n=20&page=0`,
-        {
-          timeout: 8000,
-          headers: {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/124.0.0.0 Safari/537.36',
-            'Accept': 'application/json',
-            'Referer': 'https://bunjang.co.kr/',
-          }
-        }
+      // page 0, 1, 2 병렬 요청 (최대 60건/키워드)
+      const pageResults = await Promise.allSettled([
+        fetchBunjangPageSingle(keyword, 0),
+        fetchBunjangPageSingle(keyword, 1),
+        fetchBunjangPageSingle(keyword, 2),
+      ]);
+
+      const freshDb = readDb();
+      const existingPids = new Set(
+        freshDb.listings
+          .filter(l => l.bunjangUrl)
+          .map(l => {
+            const m = (l.bunjangUrl || '').match(/products\/(\d+)/);
+            return m ? m[1] : null;
+          })
+          .filter(Boolean)
       );
 
-      if (!res.data?.list) continue;
-      const freshDb = readDb();
-      const existingIds = new Set(freshDb.listings.map(l => l.id));
       const now = new Date();
       let added = 0;
+      let position = 0;
 
-      res.data.list.forEach((product, idx) => {
-        if (!product.pid || !product.name || parseInt(product.price) <= 0) return;
-        const itemId = `bunjang_${product.pid}`;
-        if (existingIds.has(itemId)) return;
+      for (const result of pageResults) {
+        if (result.status !== 'fulfilled') continue;
+        for (const product of result.value) {
+          // 필수 데이터 검증 (pid, name, price > 0)
+          if (!product.pid || !product.name || parseInt(product.price) <= 0) continue;
+          // 삭제/중복 제외
+          if (existingPids.has(String(product.pid))) continue;
 
-        const price = parseInt(product.price);
-        const image = product.product_image
-          ? product.product_image.replace('{res}', '400')
-          : 'https://images.unsplash.com/photo-1523275335684-37898b6baf30?auto=format&fit=crop&w=400&q=80';
+          const pid   = String(product.pid);
+          const price = parseInt(product.price);
+          const name  = (product.name || '').trim();
+          const image = product.product_image
+            ? product.product_image.replace('{res}', '400')
+            : 'https://images.unsplash.com/photo-1523275335684-37898b6baf30?auto=format&fit=crop&w=400&q=80';
 
-        const createdAt = new Date(now);
-        createdAt.setMinutes(now.getMinutes() - (idx * 7));
+          const createdAt = new Date(now);
+          createdAt.setMinutes(now.getMinutes() - (position * 3 + Math.floor(Math.random() * 10)));
 
-        freshDb.listings.push({
-          id: itemId,
-          name: (product.name || '').trim(),
-          category: determineCategory(product.name),
-          image,
-          hasDefect: false,
-          bunjangPrice: price,
-          daangnPrice: Math.round(price * 0.95),
-          marketPrice: price,
-          newProductPrice: Math.round(price * 1.45),
-          riskLevel: '안전',
-          defectDetail: '',
-          url: `https://bunjang.co.kr/products/${product.pid}`,         // ✅ 실제 구매 URL
-          bunjangUrl: `https://bunjang.co.kr/products/${product.pid}`,  // ✅ 직접 상품 URL
-          daangnUrl: null,
-          usageLevel: '사용감 거의 없음',
-          isDamaged: '파손 없음',
-          missingComponents: '미확인',
-          batteryStatus: '미확인',
-          sellerNotes: '판매자 정보를 확인하려면 상품 페이지를 방문하세요.',
-          timeAgo: `${idx * 5 + 3}분 전`,
-          platform: '번개장터',
-          keyword: keyword.toLowerCase(),
-          createdAt: createdAt.toISOString(),
-        });
-        existingIds.add(itemId);
-        added++;
-      });
+          freshDb.listings.push({
+            id: `bunjang_${pid}`,
+            name,
+            category: determineCategory(name),
+            image,
+            hasDefect: false,
+            bunjangPrice: price,
+            daangnPrice: Math.round(price * 0.95),
+            marketPrice: price,
+            newProductPrice: Math.round(price * 1.45),
+            riskLevel: '안전',
+            defectDetail: '',
+            url:        `https://bunjang.co.kr/products/${pid}`,  // ✅ 실제 구매 URL
+            bunjangUrl: `https://bunjang.co.kr/products/${pid}`,  // ✅ 직접 상품 URL
+            daangnUrl: null,
+            usageLevel: '판매자 페이지 확인',
+            isDamaged: '판매자 페이지 확인',
+            missingComponents: '판매자 페이지 확인',
+            batteryStatus: '미확인',
+            sellerNotes: `번개장터에서 "${name}" 실제 판매 중인 매물입니다. 아래 버튼을 눌러 상품 페이지를 방문하세요.`,
+            timeAgo: `${Math.floor(position / 3) + 1}시간 전`,
+            platform: '번개장터',
+            keyword: keyword.toLowerCase(),
+            createdAt: createdAt.toISOString(),
+          });
 
-      writeDb(freshDb);
-      if (added > 0) console.log(`  ✅ [${keyword}] 번개장터 실제 매물 ${added}건 추가`);
+          existingPids.add(pid);
+          added++;
+          position++;
+        }
+      }
 
-      // 요청 간 딜레이 (서버 부하 방지)
-      await new Promise(r => setTimeout(r, 1500));
+      if (added > 0) {
+        writeDb(freshDb);
+        totalAdded += added;
+        console.log(`  ✅ [${keyword}] ${added}건 추가 (누적: ${totalAdded}건)`);
+      }
+
+      await new Promise(r => setTimeout(r, 800)); // 키워드 간 딜레이
     } catch (err) {
-      console.log(`  ⚠️ [${keyword}] 크롤링 실패: ${err.message}`);
+      console.log(`  ⚠️ [${keyword}] 실패: ${err.message}`);
     }
   }
 
-  const finalDb = readDb();
-  const realCrawled = finalDb.listings.filter(l => l.id && l.id.startsWith('bunjang_') && l.marketPrice > 0);
-  console.log(`🎯 자동 크롤링 완료: 실제 번개장터 매물 총 ${realCrawled.length}건`);
+  const finalCount = readDb().listings.filter(l =>
+    l.id && l.id.startsWith('bunjang_') && l.marketPrice > 0
+  ).length;
+  console.log(`🎯 자동 크롤링 완료: 실제 번개장터 매물 총 ${finalCount}건`);
 }
 
-// 서버 완전 기동 후 3초 뒤 백그라운드에서 실행 (서버 응답 지연 방지)
+// 서버 기동 3초 후 백그라운드 실행
 setTimeout(() => {
   autoPopulateFromCrawl().catch(err => console.error('자동 크롤링 오류:', err.message));
 }, 3000);
+
+
+
 
 async function fetchBunjangPage(keyword, page, retries = 2) {
   for (let attempt = 0; attempt <= retries; attempt++) {
