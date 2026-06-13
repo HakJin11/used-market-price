@@ -1,8 +1,16 @@
 import { AlertTriangle, CheckCircle2 } from 'lucide-react';
 
+// 위험도별 색상 맵
+const RISK_COLORS = {
+  '안전': { badge: '#065f46', badgeBg: '#d1fae5', border: '#10b981', cardTop: '#10b981' },
+  '주의': { badge: '#92400e', badgeBg: '#fef3c7', border: '#f59e0b', cardTop: '#f59e0b' },
+  '위험': { badge: '#7f1d1d', badgeBg: '#fee2e2', border: '#ef4444', cardTop: '#ef4444' },
+};
+const DEFAULT_RISK = { badge: '#334155', badgeBg: '#f1f5f9', border: '#cbd5e1', cardTop: '#cbd5e1' };
+
 export default function ItemCard({ item, onClick, isSelected, isCompareMode }) {
   if (!item) return null;
-  
+
   const riskLevel = item.riskLevel || '안전';
   const name = item.name || '알 수 없는 상품';
   const hasDefect = !!item.hasDefect;
@@ -10,72 +18,170 @@ export default function ItemCard({ item, onClick, isSelected, isCompareMode }) {
   const marketPrice = item.marketPrice || 0;
   const daangnPrice = item.daangnPrice || marketPrice;
   const bunjangPrice = item.bunjangPrice || marketPrice;
-  const image = item.image || 'https://via.placeholder.com/150';
+  const salePrice = bunjangPrice || daangnPrice || marketPrice;
+  const image = item.image || 'https://images.unsplash.com/photo-1523275335684-37898b6baf30?auto=format&fit=crop&w=400&q=80';
 
-  const getRiskColor = (level) => {
-    switch (level) {
-      case '안전': return 'bg-emerald-100 text-emerald-700 border-emerald-200 dark:bg-emerald-900/50 dark:text-emerald-400 dark:border-emerald-800';
-      case '주의': return 'bg-amber-100 text-amber-700 border-amber-200 dark:bg-amber-900/50 dark:text-amber-400 dark:border-amber-800';
-      case '위험': return 'bg-rose-100 text-rose-700 border-rose-200 dark:bg-rose-900/50 dark:text-rose-400 dark:border-rose-800';
-      default: return 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300';
-    }
-  };
+  const riskStyle = RISK_COLORS[riskLevel] || DEFAULT_RISK;
 
-  const riskGlow = riskLevel === '위험' ? 'shadow-[0_0_15px_rgba(244,63,94,0.4)]' : '';
+  // 판매가 대비 적정가 차이
+  const priceDiff = salePrice > 0 && marketPrice > 0 ? marketPrice - salePrice : 0;
+  const priceDiffPct = salePrice > 0 ? Math.round((priceDiff / salePrice) * 100) : 0;
 
   return (
-    <div 
+    <div
       onClick={onClick}
-      className={`glass-card rounded-2xl overflow-hidden cursor-pointer group flex flex-col h-full relative transition-all duration-300 ${
-        isSelected 
-          ? 'ring-4 ring-indigo-500 dark:ring-indigo-400 shadow-xl scale-[1.02]' 
-          : isCompareMode ? 'hover:ring-2 hover:ring-indigo-300 dark:hover:ring-indigo-700' : ''
-      }`}
+      style={{
+        borderTop: `3px solid ${riskStyle.cardTop}`,
+        boxShadow: riskLevel === '위험'
+          ? '0 0 14px rgba(239,68,68,0.25), 0 1px 3px rgba(0,0,0,0.08)'
+          : '0 1px 3px rgba(0,0,0,0.08)',
+      }}
+      className={`
+        bg-white rounded-2xl overflow-hidden cursor-pointer
+        flex flex-col h-full relative
+        border border-slate-200
+        hover:shadow-md hover:scale-[1.015] hover:border-slate-300
+        transition-all duration-200
+        ${isSelected ? 'ring-4 ring-indigo-500 shadow-xl scale-[1.02]' : ''}
+      `}
     >
+      {/* 비교 선택 체크 */}
       {isCompareMode && (
         <div className="absolute inset-0 z-20 pointer-events-none rounded-2xl">
-          <div className={`absolute top-3 left-3 w-6 h-6 rounded-full border-2 flex items-center justify-center transition-colors ${
-            isSelected 
-              ? 'bg-indigo-500 border-indigo-500 text-white' 
-              : 'bg-white/50 border-white/80 dark:bg-slate-800/50 dark:border-slate-500 backdrop-blur-sm'
-          }`}>
+          <div
+            className="absolute top-3 left-3 w-6 h-6 rounded-full border-2 flex items-center justify-center transition-colors"
+            style={{
+              backgroundColor: isSelected ? '#4f46e5' : 'rgba(255,255,255,0.7)',
+              borderColor: isSelected ? '#4f46e5' : 'rgba(255,255,255,0.9)',
+              color: 'white'
+            }}
+          >
             {isSelected && <CheckCircle2 className="w-4 h-4" />}
           </div>
         </div>
       )}
 
-      <div className="relative w-full aspect-square overflow-hidden bg-slate-100 dark:bg-slate-800">
-        <img 
-          src={image} 
-          alt={name} 
-          className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500"
+      {/* 이미지 */}
+      <div className="relative w-full aspect-square overflow-hidden bg-slate-100">
+        <img
+          src={image}
+          alt={name}
+          className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+          onError={e => {
+            e.target.src = 'https://images.unsplash.com/photo-1523275335684-37898b6baf30?auto=format&fit=crop&w=400&q=80';
+          }}
         />
-        <div className={`absolute top-3 right-3 px-2.5 py-1 text-xs font-bold rounded-lg border backdrop-blur-md ${getRiskColor(riskLevel)} ${riskGlow}`}>
+
+        {/* 위험도 배지 */}
+        <div
+          style={{
+            position: 'absolute', top: 8, right: 8,
+            backgroundColor: riskStyle.badgeBg,
+            color: riskStyle.badge,
+            border: `1px solid ${riskStyle.border}`,
+            padding: '2px 8px',
+            borderRadius: 8,
+            fontSize: 11,
+            fontWeight: 700,
+          }}
+        >
           {riskLevel}
         </div>
-      </div>
-      <div className="p-4 flex flex-col flex-grow">
-        <div className="flex justify-between items-start mb-2">
-          <h3 className="font-bold text-slate-800 dark:text-slate-100 line-clamp-2">{name}</h3>
-        </div>
-        {hasDefect && (
-          <div className="flex items-center gap-1 text-xs text-rose-500 dark:text-rose-400 font-medium mb-1">
-            <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
-            <span className="truncate">{defectDetail}</span>
+
+        {/* 플랫폼 배지 */}
+        {item.platform && (
+          <div
+            style={{
+              position: 'absolute', bottom: 8, left: 8,
+              backgroundColor: item.platform === '당근마켓' ? 'rgba(249,115,22,0.9)' : 'rgba(239,68,68,0.9)',
+              color: 'white',
+              padding: '2px 8px',
+              borderRadius: 6,
+              fontSize: 10,
+              fontWeight: 700,
+            }}
+          >
+            {item.platform}
           </div>
         )}
-        <div className="mt-auto pt-3 border-t border-slate-100 dark:border-slate-700/50 flex flex-col gap-1">
-          <div className="flex justify-between items-end">
-            <span className="text-xs font-medium text-slate-400 dark:text-slate-500">판매가</span>
-            <span className="text-sm font-semibold text-slate-600 dark:text-slate-300">
-              {(bunjangPrice || daangnPrice || marketPrice).toLocaleString()}원
+      </div>
+
+      {/* 정보 영역 */}
+      <div style={{ padding: '12px 14px 14px', display: 'flex', flexDirection: 'column', flexGrow: 1 }}>
+
+        {/* ✅ 제품명: 진한 색, 크고 굵게 */}
+        <h3
+          style={{
+            fontSize: 15,
+            fontWeight: 800,
+            color: '#111827',   /* 가장 진한 gray-900 */
+            lineHeight: 1.35,
+            marginBottom: 8,
+            display: '-webkit-box',
+            WebkitLineClamp: 2,
+            WebkitBoxOrient: 'vertical',
+            overflow: 'hidden',
+          }}
+        >
+          {name}
+        </h3>
+
+        {/* ✅ 하자 경고: 빨간색 강조 */}
+        {hasDefect && (
+          <div
+            style={{
+              display: 'flex', alignItems: 'center', gap: 4,
+              backgroundColor: '#fff1f2',
+              border: '1px solid #fecdd3',
+              borderRadius: 8,
+              padding: '4px 8px',
+              marginBottom: 8,
+            }}
+          >
+            <AlertTriangle style={{ width: 13, height: 13, color: '#dc2626', flexShrink: 0 }} />
+            <span style={{ fontSize: 11, fontWeight: 700, color: '#b91c1c', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {defectDetail}
             </span>
           </div>
-          <div className="flex justify-between items-end">
-            <span className="text-sm font-medium text-slate-500 dark:text-slate-400">적정가</span>
-            <span className="font-bold text-lg text-indigo-600 dark:text-indigo-400">
-              {marketPrice.toLocaleString()}원
+        )}
+
+        {/* 가격 영역 */}
+        <div style={{ marginTop: 'auto', paddingTop: 12, borderTop: '1px solid #e2e8f0' }}>
+
+          {/* ✅ 판매가: 진한 검정 #111827 */}
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+            <span style={{ fontSize: 11, fontWeight: 600, color: '#64748b' }}>판매가</span>
+            <span style={{ fontSize: 13, fontWeight: 700, color: '#111827' }}>
+              {salePrice.toLocaleString()}원
             </span>
+          </div>
+
+          {/* ✅ 적정가: 파란색 강조 박스 */}
+          <div
+            style={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              backgroundColor: '#eff6ff',
+              border: '1px solid #bfdbfe',
+              borderRadius: 10,
+              padding: '6px 10px',
+            }}
+          >
+            <span style={{ fontSize: 11, fontWeight: 700, color: '#2563eb' }}>적정가</span>
+            <div style={{ display: 'flex', alignItems: 'baseline', gap: 4 }}>
+              <span style={{ fontSize: 17, fontWeight: 900, color: '#1d4ed8', lineHeight: 1 }}>
+                {marketPrice.toLocaleString()}원
+              </span>
+              {priceDiffPct !== 0 && (
+                <span style={{
+                  fontSize: 10, fontWeight: 700,
+                  color: priceDiffPct > 0 ? '#16a34a' : '#dc2626'
+                }}>
+                  {priceDiffPct > 0 ? `+${priceDiffPct}%` : `${priceDiffPct}%`}
+                </span>
+              )}
+            </div>
           </div>
         </div>
       </div>

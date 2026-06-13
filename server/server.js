@@ -55,9 +55,11 @@ async function searchBunjang(keyword, page = 1) {
       id: `bunjang_${item.pid}`,
       name: item.name,
       price: parseInt(item.price) || 0,
-      image: item.product_image || 'https://via.placeholder.com/150',
+      image: item.product_image
+        ? item.product_image.replace('{res}', '300')
+        : 'https://images.unsplash.com/photo-1523275335684-37898b6baf30?auto=format&fit=crop&w=400&q=80',
       category: '번개장터',
-      url: `https://m.bunjang.co.kr/products/${item.pid}`,
+      url: `https://bunjang.co.kr/products/${item.pid}`,
       source: 'bunjang'
     }));
   } catch (error) {
@@ -66,40 +68,130 @@ async function searchBunjang(keyword, page = 1) {
   }
 }
 
-// 당근마켓 크롤링 (HTML 파싱)
-async function searchDaangn(keyword, page = 1) {
-  try {
-    const headers = {
-      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
-    };
-    const res = await axios.get(`https://www.daangn.com/search/${encodeURIComponent(keyword)}`, { headers, timeout: 4000 });
-    const $ = cheerio.load(res.data);
-    const items = [];
-    
-    $('.flea-market-article').each((i, el) => {
+// 당근마켓 크롤링 (HTML 파싱) - 재시도 및 다중 셀렉터 fallback 포함
+const DAANGN_USER_AGENTS = [
+  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+  'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36',
+  'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:125.0) Gecko/20100101 Firefox/125.0',
+  'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36'
+];
+
+// CSS 셀렉터 조합 목록 (최신 → 구버전 순서로 시도)
+const DAANGN_SELECTOR_CHAINS = [
+  // 방식 1: 최신 당근마켓 구조 (2024~)
+  {
+    container: 'article[data-track-section="search_result"]',
+    title: '[data-testid="article-title"], .article-title, h2',
+    price: '[data-testid="article-price"], .article-price, span[class*="price"]',
+    link: 'a[href*="/articles/"], a[href*="/products/"], a',
+    img: 'img[src*="daangn"], img[src*="karrot"], img'
+  },
+  // 방식 2: 구 당근마켓 구조
+  {
+    container: '.flea-market-article',
+    title: '.article-title',
+    price: '.article-price',
+    link: 'a',
+    img: '.card-photo img, img'
+  },
+  // 방식 3: 전국검색 페이지 구조
+  {
+    container: 'li[class*="article"], div[class*="article-item"], div[class*="item-card"]',
+    title: 'strong, h2, h3, [class*="title"]',
+    price: '[class*="price"], strong + span, p',
+    link: 'a',
+    img: 'img'
+  }
+];
+
+async function searchDaangnOnce(keyword, attempt = 0) {
+  const ua = DAANGN_USER_AGENTS[attempt % DAANGN_USER_AGENTS.length];
+  const headers = {
+    'User-Agent': ua,
+    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
+    'Accept-Language': 'ko-KR,ko;q=0.9,en-US;q=0.8',
+    'Accept-Encoding': 'gzip, deflate, br',
+    'Referer': 'https://www.daangn.com/',
+    'Cache-Control': 'no-cache',
+    'Connection': 'keep-alive'
+  };
+
+  // 최신 URL 구조와 구 URL 구조를 모두 시도
+  const urls = [
+    `https://www.daangn.com/kr/buy-sell/?in=전국&search_type=keyword&query=${encodeURIComponent(keyword)}`,
+    `https://www.daangn.com/search/${encodeURIComponent(keyword)}`
+  ];
+  const url = urls[attempt % urls.length];
+
+  const res = await axios.get(url, { headers, timeout: 6000 });
+  const $ = cheerio.load(res.data);
+  const items = [];
+
+  // 셀렉터 조합을 순서대로 시도
+  for (const chain of DAANGN_SELECTOR_CHAINS) {
+    const containers = $(chain.container);
+    if (containers.length === 0) continue;
+
+    containers.each((i, el) => {
       if (i >= 10) return;
-      const title = $(el).find('.article-title').text().trim();
-      const priceStr = $(el).find('.article-price').text().trim();
+      const $el = $(el);
+
+      const title = $el.find(chain.title).first().text().trim();
+      const priceStr = $el.find(chain.price).first().text().trim();
       const price = parseInt(priceStr.replace(/[^0-9]/g, '')) || 0;
-      const link = 'https://www.daangn.com' + ($(el).find('a').attr('href') || '');
-      const img = $(el).find('.card-photo img').attr('src');
-      
+
+      const linkEl = $el.find(chain.link).first();
+      const href = linkEl.attr('href') || '';
+      const link = href.startsWith('http') ? href : 'https://www.daangn.com' + href;
+
+      const imgEl = $el.find(chain.img).first();
+      const img = imgEl.attr('src') || imgEl.attr('data-src') || '';
+
+      if (!title) return; // 제목 없는 항목 스킵
+
       items.push({
-        id: `daangn_${title.replace(/\s+/g, '')}_${price}`,
+        id: `daangn_${title.replace(/\s+/g, '').slice(0, 20)}_${price}_${i}`,
         name: title,
         price,
-        image: img || 'https://via.placeholder.com/150',
+        image: img || 'https://images.unsplash.com/photo-1557821552-17105176677c?auto=format&fit=crop&w=400&q=80',
         category: '당근마켓',
-        url: link,
+        url: link || 'https://www.daangn.com/kr/',
         source: 'daangn'
       });
     });
-    
-    return items;
-  } catch (error) {
-    console.error('Daangn scraping error:', error.message);
-    return [];
+
+    if (items.length > 0) break; // 결과 있으면 다음 셀렉터 불필요
   }
+
+  return items;
+}
+
+async function searchDaangn(keyword, page = 1) {
+  const MAX_RETRIES = 2;
+  let lastError = null;
+
+  for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+    try {
+      if (attempt > 0) {
+        // 지수 백오프: 0.5s → 1s
+        await new Promise(resolve => setTimeout(resolve, attempt * 500));
+        console.log(`당근마켓 재시도 ${attempt}/${MAX_RETRIES}: "${keyword}"`);
+      }
+      const items = await searchDaangnOnce(keyword, attempt);
+      if (items.length > 0) {
+        console.log(`당근마켓 크롤링 성공 (시도 ${attempt + 1}): ${items.length}건`);
+        return items;
+      }
+      // 결과가 0건이어도 재시도 (페이지 구조가 달라 파싱 실패했을 수 있음)
+      lastError = new Error('No items parsed - possible selector mismatch');
+    } catch (error) {
+      lastError = error;
+      console.warn(`당근마켓 크롤링 실패 (시도 ${attempt + 1}): ${error.message}`);
+    }
+  }
+
+  console.error(`당근마켓 크롤링 최종 실패: ${lastError?.message}`);
+  return [];
 }
 
 // 카테고리 결정 헬퍼 함수
@@ -315,7 +407,9 @@ function generateLocalMockSeed(keyword, db) {
       newProductPrice: Math.round(itemPrice * 1.45),
       riskLevel: riskLevel,
       defectDetail: isDefect ? enrichment.defectDetail : '',
-      url: platform === '번개장터' ? 'https://m.bunjang.co.kr/' : 'https://www.daangn.com/kr/',
+      url: platform === '번개장터'
+        ? `https://m.bunjang.co.kr/search/products?q=${encodeURIComponent(keyword)}`
+        : `https://www.daangn.com/kr/buy-sell/?search_type=keyword&query=${encodeURIComponent(keyword)}`,
       usageLevel: enrichment.usageLevel,
       isDamaged: enrichment.isDamaged,
       missingComponents: enrichment.missingComponents,
@@ -352,32 +446,45 @@ function generateLocalMockSeed(keyword, db) {
 }
 
 // Scrape and Accumulate Helper Function
+// Returns { bunjangCount, daangnCount, crawlFailed } for API status propagation
 async function scrapeAndAccumulate(keyword) {
   const queryKey = keyword.toLowerCase().trim();
-  if (!queryKey) return;
+  if (!queryKey) return { bunjangCount: 0, daangnCount: 0, crawlFailed: false };
 
   const db = readDb();
 
   if (!db.categories) {
-  db.categories = [];
-}
-
-if (!db.categories.includes(queryKey)) {
-  db.categories.push(queryKey);
-}
+    db.categories = [];
+  }
+  if (!db.categories.includes(queryKey)) {
+    db.categories.push(queryKey);
+  }
 
   const isFirstSearch = db.listings.filter(l => l.keyword === queryKey).length === 0;
 
-  // Safe wrapper for scrapers
+  // 번개장터/당근마켓 동시 크롤링 (각각 독립적으로 처리)
   let bunjangItems = [];
   let daangnItems = [];
-  try {
-    [bunjangItems, daangnItems] = await Promise.all([
-      searchBunjang(keyword, 1),
-      searchDaangn(keyword, 1)
-    ]);
-  } catch (err) {
-    console.error('Crawler failed inside scrapeAndAccumulate:', err.message);
+  let bunjangFailed = false;
+  let daangnFailed = false;
+
+  const [bunjangResult, daangnResult] = await Promise.allSettled([
+    searchBunjang(keyword, 1),
+    searchDaangn(keyword, 1)
+  ]);
+
+  if (bunjangResult.status === 'fulfilled') {
+    bunjangItems = bunjangResult.value;
+  } else {
+    bunjangFailed = true;
+    console.error('번개장터 크롤링 실패:', bunjangResult.reason?.message);
+  }
+
+  if (daangnResult.status === 'fulfilled') {
+    daangnItems = daangnResult.value;
+  } else {
+    daangnFailed = true;
+    console.error('당근마켓 크롤링 실패:', daangnResult.reason?.message);
   }
 
   const combinedScraped = [];
@@ -387,75 +494,69 @@ if (!db.categories.includes(queryKey)) {
     if (daangnItems[i]) combinedScraped.push(daangnItems[i]);
   }
 
-  const bunjangData = bunjangItems;
-  const carrotData = daangnItems;
-  const mergedData = combinedScraped;
   console.log("검색어:", keyword);
-  console.log("번개장터 데이터:", bunjangData);
-  console.log("당근마켓 데이터:", carrotData);
-  console.log("최종 데이터:", mergedData);
+  console.log("번개장터 데이터:", bunjangItems.length, "건");
+  console.log("당근마켓 데이터:", daangnItems.length, "건");
+  console.log("합계:", combinedScraped.length, "건");
 
   const now = new Date();
   combinedScraped.forEach(item => {
+    const isDefect = Math.random() > 0.8;
+    const marketPrice = item.price;
+    const riskLevel = marketPrice === 0 ? '위험' : (isDefect ? '주의' : '안전');
+    const category = determineCategory(item.name);
+    const enrichment = enrichItemDetails(item.name, isDefect);
+    const platform = item.source === 'bunjang' ? '번개장터' : '당근마켓';
 
-      const isDefect = Math.random() > 0.8;
-      const marketPrice = item.price;
-      const riskLevel = marketPrice === 0 ? '위험' : (isDefect ? '주의' : '안전');
-      const category = determineCategory(item.name);
-      const enrichment = enrichItemDetails(item.name, isDefect);
-      const platform = item.source === 'bunjang' ? '번개장터' : '당근마켓';
+    const enrichedItem = {
+      id: `${item.id}_${Date.now()}_${Math.floor(Math.random() * 10000)}`,
+      name: item.name,
+      category: category,
+      image: item.image,
+      hasDefect: isDefect,
+      bunjangPrice: item.source === 'bunjang' ? item.price : Math.round(item.price * 1.05),
+      daangnPrice: item.source === 'daangn' ? item.price : Math.round(item.price * 0.95),
+      marketPrice: marketPrice,
+      newProductPrice: Math.round(marketPrice * 1.45),
+      riskLevel: riskLevel,
+      defectDetail: isDefect ? enrichment.defectDetail : '',
+      url: item.url,
+      usageLevel: enrichment.usageLevel,
+      isDamaged: enrichment.isDamaged,
+      missingComponents: enrichment.missingComponents,
+      batteryStatus: enrichment.batteryStatus,
+      sellerNotes: enrichment.sellerNotes,
+      timeAgo: '방금 전',
+      platform: platform,
+      keyword: queryKey,
+      createdAt: now.toISOString()
+    };
 
-      const enrichedItem = {
-        id: `${item.id}_${Date.now()}_${Math.floor(Math.random() * 10000)}`,
-        name: item.name,
-        category: category,
-        image: item.image,
-        hasDefect: isDefect,
-        bunjangPrice: item.source === 'bunjang' ? item.price : Math.round(item.price * 1.05),
-        daangnPrice: item.source === 'daangn' ? item.price : Math.round(item.price * 0.95),
-        marketPrice: marketPrice,
-        newProductPrice: Math.round(marketPrice * 1.45),
-        riskLevel: riskLevel,
-        defectDetail: isDefect ? enrichment.defectDetail : '',
-        url: item.url,
-        usageLevel: enrichment.usageLevel,
-        isDamaged: enrichment.isDamaged,
-        missingComponents: enrichment.missingComponents,
-        batteryStatus: enrichment.batteryStatus,
-        sellerNotes: enrichment.sellerNotes,
-        timeAgo: '방금 전',
-        platform: platform,
-        keyword: queryKey,
-        createdAt: now.toISOString()
-      };
+    db.listings.push(enrichedItem);
 
-      db.listings.push(enrichedItem);
+    // Generate history if this is the first crawl of this keyword
+    if (isFirstSearch) {
+      const historicalDays = [1, 3, 5, 7, 10, 14, 20, 25, 30];
+      historicalDays.forEach(daysAgo => {
+        const date = new Date(now);
+        date.setDate(now.getDate() - daysAgo);
+        date.setHours(Math.floor(Math.random() * 24), Math.floor(Math.random() * 60));
+        const variance = 0.9 + Math.random() * 0.2;
+        const price = Math.round(marketPrice * variance);
 
-      // Generate history if this is the first crawl of this keyword
-      if (isFirstSearch) {
-        const historicalDays = [1, 3, 5, 7, 10, 14, 20, 25, 30];
-        historicalDays.forEach(daysAgo => {
-          const date = new Date(now);
-          date.setDate(now.getDate() - daysAgo);
-          date.setHours(Math.floor(Math.random() * 24), Math.floor(Math.random() * 60));
-          
-          // Random price variance +/- 10%
-          const variance = 0.9 + Math.random() * 0.2;
-          const price = Math.round(marketPrice * variance);
-
-          db.listings.push({
-            ...enrichedItem,
-            id: `${item.id}_hist_${daysAgo}`,
-            marketPrice: price,
-            bunjangPrice: item.source === 'bunjang' ? price : Math.round(price * 1.05),
-            daangnPrice: item.source === 'daangn' ? price : Math.round(price * 0.95),
-            newProductPrice: Math.round(price * 1.45),
-            createdAt: date.toISOString(),
-            timeAgo: `${daysAgo}일 전`
-          });
+        db.listings.push({
+          ...enrichedItem,
+          id: `${item.id}_hist_${daysAgo}`,
+          marketPrice: price,
+          bunjangPrice: item.source === 'bunjang' ? price : Math.round(price * 1.05),
+          daangnPrice: item.source === 'daangn' ? price : Math.round(price * 0.95),
+          newProductPrice: Math.round(price * 1.45),
+          createdAt: date.toISOString(),
+          timeAgo: `${daysAgo}일 전`
         });
-      }
-    });
+      });
+    }
+  });
 
   if (combinedScraped.length === 0 && isFirstSearch) {
     console.log(`No active listings scraped and no DB cache found for [${keyword}]. Seeding local simulated dataset...`);
@@ -463,6 +564,14 @@ if (!db.categories.includes(queryKey)) {
   }
 
   writeDb(db);
+
+  return {
+    bunjangCount: bunjangItems.length,
+    daangnCount: daangnItems.length,
+    crawlFailed: bunjangFailed && daangnFailed,
+    daangnFailed,
+    bunjangFailed
+  };
 }
 
 // 실시간 검색 및 데이터 누적 API
@@ -471,13 +580,14 @@ app.get('/api/search', async (req, res) => {
   const page = parseInt(req.query.page) || 1;
 
   if (!keyword) {
-    return res.json({ items: [], stats: null });
+    return res.json({ items: [], stats: null, crawlStatus: null });
   }
   
+  let crawlStatus = null;
   try {
     // Only scrape on page 1 to load/accumulate new items
     if (page === 1) {
-      await scrapeAndAccumulate(keyword);
+      crawlStatus = await scrapeAndAccumulate(keyword);
     }
     
     const db = readDb();
@@ -665,11 +775,11 @@ app.get('/api/search', async (req, res) => {
     });
 
     formattedItems.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
-    res.json({ items: formattedItems, stats });
+    res.json({ items: formattedItems, stats, crawlStatus });
 
   } catch (error) {
     console.error('Search API error, returning safe empty result:', error.message);
-    res.json({ items: [], stats: null });
+    res.json({ items: [], stats: null, crawlStatus: { crawlFailed: true, daangnFailed: true, bunjangFailed: true } });
   }
 });
 
